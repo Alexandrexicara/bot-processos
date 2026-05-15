@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Processos</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0a0a;
+            color: #fff;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        /* Partículas flutuantes no fundo */
+        .particles {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .particle {
+            position: absolute;
+            border-radius: 50%;
+            animation: floatUp 8s infinite ease-in;
+            opacity: 0;
+        }
+
+        @keyframes floatUp {
+            0%   { transform: translateY(100vh) scale(0); opacity: 0; }
+            10%  { opacity: 1; }
+            90%  { opacity: 1; }
+            100% { transform: translateY(-10vh) scale(1.5); opacity: 0; }
+        }
+
+        /* Header / Nav */
+        .navbar {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 60px;
+            background: rgba(10,10,10,0.95);
+            border-bottom: 1px solid rgba(255,94,0,0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .logo {
+            font-size: 26px;
+            font-weight: 900;
+            letter-spacing: 2px;
+        }
+        .logo .laranja { color: #FF5E00; }
+        .logo .verde   { color: #39FF14; }
+        .logo .branco  { color: #fff; }
+
+        .nav-links { display: flex; gap: 30px; align-items: center; }
+        .nav-links a {
+            color: #ccc;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+        .nav-links a:hover { color: #FF5E00; }
+
+        .btn-login {
+            background: transparent;
+            border: 2px solid #FF5E00;
+            color: #FF5E00;
+            padding: 10px 28px;
+            border-radius: 30px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .btn-login:hover {
+            background: #FF5E00;
+            color: #000;
+            box-shadow: 0 0 25px rgba(255,94,0,0.5);
+        }
+
+        /* Hero Section */
+        .hero {
+            position: relative;
+            z-index: 5;
+            text-align: center;
+            padding: 120px 20px 80px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .hero-badge {
+            display: inline-block;
+            background: rgba(57,255,20,0.1);
+            border: 1px solid rgba(57,255,20,0.3);
+            color: #39FF14;
+            padding: 8px 20px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            margin-bottom: 30px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 5px rgba(57,255,20,0.3); }
+            50%      { box-shadow: 0 0 25px rgba(57,255,20,0.6); }
+        }
+
+        .hero h1 {
+            font-size: 64px;
+            font-weight: 900;
+            line-height: 1.1;
+            margin-bottom: 20px;
+        }
+        .hero h1 .outline {
+            color: transparent;
+            -webkit-text-stroke: 2px #FF5E00;
+        }
+        .hero h1 .fill {
+            color: #FF5E00;
+            text-shadow: 0 0 40px rgba(255,94,0,0.6);
+        }
+
+        .hero p {
+            font-size: 18px;
+            color: #aaa;
+            max-width: 600px;
+            margin: 0 auto 40px;
+            line-height: 1.7;
+        }
+
+        .btn-primary {
+            display: inline-block;
+            background: linear-gradient(135deg, #FF5E00, #FF8C00);
+            color: #000;
+            padding: 16px 45px;
+            border-radius: 30px;
+            font-size: 17px;
+            font-weight: 700;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
+            letter-spacing: 1px;
+        }
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 40px rgba(255,94,0,0.5);
+        }
+
+        .btn-secondary {
+            display: inline-block;
+            background: transparent;
+            border: 2px solid #00BFFF;
+            color: #00BFFF;
+            padding: 14px 40px;
+            border-radius: 30px;
+            font-size: 16px;
+            font-weight: 700;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-left: 15px;
+        }
+        .btn-secondary:hover {
+            background: #00BFFF;
+            color: #000;
+            box-shadow: 0 0 30px rgba(0,191,255,0.5);
+        }
+
+        /* Features */
+        .features {
+            position: relative;
+            z-index: 5;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 30px;
+            max-width: 1100px;
+            margin: 0 auto 100px;
+            padding: 0 20px;
+        }
+
+        .feature-card {
+            background: rgba(20,20,20,0.8);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 40px 30px;
+            text-align: center;
+            transition: all 0.4s;
+            position: relative;
+            overflow: hidden;
+        }
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 3px;
+        }
+        .feature-card:nth-child(1)::before { background: #FF5E00; }
+        .feature-card:nth-child(2)::before { background: #39FF14; }
+        .feature-card:nth-child(3)::before { background: #00BFFF; }
+
+        .feature-card:hover {
+            transform: translateY(-8px);
+            border-color: rgba(255,255,255,0.1);
+        }
+        .feature-card:nth-child(1):hover { box-shadow: 0 10px 40px rgba(255,94,0,0.15); }
+        .feature-card:nth-child(2):hover { box-shadow: 0 10px 40px rgba(57,255,20,0.15); }
+        .feature-card:nth-child(3):hover { box-shadow: 0 10px 40px rgba(0,191,255,0.15); }
+
+        .feature-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        .feature-card h3 {
+            font-size: 20px;
+            margin-bottom: 12px;
+            color: #fff;
+        }
+        .feature-card p {
+            font-size: 14px;
+            color: #999;
+            line-height: 1.7;
+        }
+
+        /* Pricing */
+        .pricing-section {
+            position: relative;
+            z-index: 5;
+            text-align: center;
+            padding: 80px 20px;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .pricing-section h2 {
+            font-size: 36px;
+            font-weight: 900;
+            margin-bottom: 15px;
+        }
+        .pricing-section h2 .laranja { color: #FF5E00; }
+        .pricing-section .subtitle {
+            color: #888;
+            margin-bottom: 50px;
+            font-size: 16px;
+        }
+
+        .pricing-cards {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+
+        .pricing-card {
+            background: rgba(20,20,20,0.9);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 20px;
+            padding: 45px 35px;
+            width: 380px;
+            text-align: center;
+            transition: all 0.4s;
+            position: relative;
+        }
+
+        .pricing-card.destaque {
+            border: 2px solid #FF5E00;
+            box-shadow: 0 0 40px rgba(255,94,0,0.2), inset 0 0 40px rgba(255,94,0,0.03);
+            transform: scale(1.05);
+        }
+        .pricing-card.destaque:hover {
+            box-shadow: 0 0 60px rgba(255,94,0,0.35), inset 0 0 60px rgba(255,94,0,0.05);
+        }
+
+        .pricing-card .badge-destaque {
+            position: absolute;
+            top: -14px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #FF5E00, #FF8C00);
+            color: #000;
+            padding: 6px 22px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 1px;
+        }
+
+        .pricing-card h3 {
+            font-size: 18px;
+            color: #fff;
+            margin-bottom: 25px;
+            letter-spacing: 1px;
+        }
+
+        .pricing-card .price {
+            font-size: 52px;
+            font-weight: 900;
+            margin-bottom: 5px;
+        }
+        .pricing-card .price .cifrao { font-size: 28px; vertical-align: super; }
+        .pricing-card.destaque .price {
+            color: #FF5E00;
+            text-shadow: 0 0 30px rgba(255,94,0,0.5);
+        }
+        .pricing-card:not(.destaque) .price { color: #fff; }
+
+        .pricing-card .price-periodo {
+            color: #777;
+            font-size: 13px;
+            margin-bottom: 25px;
+        }
+
+        .pricing-card .divider {
+            width: 60px;
+            height: 2px;
+            margin: 0 auto 25px;
+            border-radius: 1px;
+        }
+        .pricing-card.destaque .divider { background: #FF5E00; }
+        .pricing-card:not(.destaque) .divider { background: #333; }
+
+        .pricing-card .pagamento-opcoes {
+            text-align: left;
+            margin-bottom: 30px;
+        }
+
+        .pricing-card .opcao-pag {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px;
+            padding: 15px 18px;
+            margin-bottom: 10px;
+            transition: all 0.3s;
+        }
+        .pricing-card .opcao-pag:hover {
+            border-color: rgba(255,94,0,0.3);
+            background: rgba(255,94,0,0.04);
+        }
+
+        .pricing-card .opcao-pag .titulo {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+        .pricing-card .opcao-pag .titulo span:first-child {
+            color: #fff;
+            font-weight: 700;
+            font-size: 15px;
+        }
+        .pricing-card .opcao-pag .titulo .valor-pag {
+            color: #39FF14;
+            font-weight: 800;
+            font-size: 16px;
+        }
+        .pricing-card .opcao-pag .desc {
+            color: #777;
+            font-size: 12px;
+        }
+
+        .pricing-card .btn-preco {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 700;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.3s;
+            letter-spacing: 1px;
+        }
+        .pricing-card.destaque .btn-preco {
+            background: linear-gradient(135deg, #FF5E00, #FF8C00);
+            color: #000;
+            border: none;
+        }
+        .pricing-card.destaque .btn-preco:hover {
+            box-shadow: 0 8px 35px rgba(255,94,0,0.4);
+            transform: translateY(-2px);
+        }
+        .pricing-card:not(.destaque) .btn-preco {
+            background: transparent;
+            color: #fff;
+            border: 2px solid #444;
+        }
+        .pricing-card:not(.destaque) .btn-preco:hover {
+            border-color: #FF5E00;
+            color: #FF5E00;
+        }
+
+        .garantia {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 40px;
+            color: #39FF14;
+            font-size: 14px;
+        }
+        .garantia .icone { font-size: 20px; }
+
+        /* Stats bar */
+        .stats-bar {
+            position: relative;
+            z-index: 5;
+            display: flex;
+            justify-content: center;
+            gap: 80px;
+            padding: 60px 20px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        .stat { text-align: center; }
+        .stat-number {
+            font-size: 42px;
+            font-weight: 900;
+            background: linear-gradient(135deg, #FF5E00, #39FF14);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .stat-label { color: #777; font-size: 14px; margin-top: 5px; }
+
+        /* Footer */
+        .footer {
+            position: relative;
+            z-index: 5;
+            text-align: center;
+            padding: 40px 20px;
+            color: #555;
+            font-size: 13px;
+        }
+        .footer span { color: #FF5E00; }
+
+        /* Responsivo */
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 38px; }
+            .features { grid-template-columns: 1fr; }
+            .stats-bar { gap: 30px; flex-wrap: wrap; }
+            .navbar { padding: 15px 20px; }
+            .btn-secondary { margin-left: 0; margin-top: 10px; }
+            .nav-links { display: none; }
+            .pricing-card { width: 100%; }
+            .pricing-card.destaque { transform: scale(1); }
+            .pricing-section h2 { font-size: 28px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Partículas de fundo -->
+<div class="particles" id="particles"></div>
+
+<!-- Navbar -->
+<nav class="navbar">
+    <div class="logo">
+        <span class="laranja">⚡</span><span class="branco">Sistema</span><span class="verde">Processos</span>
+    </div>
+    <div class="nav-links">
+        <a href="#features">Recursos</a>
+        <a href="#precos">Preços</a>
+        <a href="#sobre">Sobre</a>
+        <a href="/login.html" class="btn-login">Entrar</a>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-badge">🟢 MONITORAMENTO 24H</div>
+    <h1>
+        <span class="outline">Acompanhe</span><br>
+        <span class="fill">Seus Processos</span><br>
+        <span style="color:#fff">em Tempo Real</span>
+    </h1>
+    <p>
+        Monitoramento inteligente de processos judiciais via Telegram.
+        Receba atualizações instantâneas, consulte tribunais e nunca perca um prazo.
+    </p>
+    <a href="/login.html" class="btn-primary">🚀 COMEÇAR AGORA</a>
+    <a href="#features" class="btn-secondary">▼ Ver Recursos</a>
+</section>
+
+<!-- Features -->
+<section class="features" id="features">
+    <div class="feature-card">
+        <div class="feature-icon">🤖</div>
+        <h3>Bot Telegram</h3>
+        <p>Consulte processos diretamente pelo Telegram. Envie o número e receba os dados na hora, de forma simples e rápida.</p>
+    </div>
+    <div class="feature-card">
+        <div class="feature-icon">🔔</div>
+        <h3>Alertas Automáticos</h3>
+        <p>O sistema verifica seus processos a cada 5 minutos e envia notificação sempre que houver uma atualização.</p>
+    </div>
+    <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3>Painel Completo</h3>
+        <p>Dashboard web com todos os seus processos, status atualizado e histórico de movimentações. Tudo centralizado.</p>
+    </div>
+</section>
+
+<!-- Pricing -->
+<section class="pricing-section" id="precos">
+    <h2>Invista no <span class="laranja">Futuro</span> do seu Escritório</h2>
+    <p class="subtitle">Escolha a melhor forma de pagamento para você</p>
+
+    <div class="pricing-cards">
+        <!-- Plano Único -->
+        <div class="pricing-card destaque">
+            <div class="badge-destaque">⚡ MAIS VENDIDO</div>
+            <h3>LICENÇA VITALÍCIA</h3>
+            <div class="price">
+                <span class="cifrao">R$</span>5.000<span style="font-size:24px">,00</span>
+            </div>
+            <p class="price-periodo">pagamento único · sem mensalidades</p>
+            <div class="divider"></div>
+
+            <div class="pagamento-opcoes">
+                <!-- À vista -->
+                <div class="opcao-pag">
+                    <div class="titulo">
+                        <span>💵 À Vista</span>
+                        <span class="valor-pag">R$ 5.000,00</span>
+                    </div>
+                    <div class="desc">Pagamento único via PIX ou boleto</div>
+                </div>
+
+                <!-- 6x -->
+                <div class="opcao-pag">
+                    <div class="titulo">
+                        <span>💳 6x no Cartão</span>
+                        <span class="valor-pag">6x R$ 916,67</span>
+                    </div>
+                    <div class="desc">Total: R$ 5.500,00 · com juros</div>
+                </div>
+
+                <!-- 12x -->
+                <div class="opcao-pag">
+                    <div class="titulo">
+                        <span>💳 12x no Cartão</span>
+                        <span class="valor-pag">12x R$ 500,00</span>
+                    </div>
+                    <div class="desc">Total: R$ 6.000,00 · com juros</div>
+                </div>
+            </div>
+
+            <a href="/login.html" class="btn-preco">🔥 QUERO CONTRATAR</a>
+        </div>
+    </div>
+
+    <div class="garantia">
+        <span class="icone">🛡️</span>
+        <span><strong>Garantia de 7 dias</strong> · Se não gostar, devolvemos seu dinheiro</span>
+    </div>
+</section>
+
+<!-- Stats -->
+<div class="stats-bar">
+    <div class="stat">
+        <div class="stat-number">24/7</div>
+        <div class="stat-label">Monitoramento</div>
+    </div>
+    <div class="stat">
+        <div class="stat-number">5min</div>
+        <div class="stat-label">Atualização</div>
+    </div>
+    <div class="stat">
+        <div class="stat-number">100%</div>
+        <div class="stat-label">Automatizado</div>
+    </div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+    Feito com <span>♥</span> · Sistema de Processos v2.0 · © 2026
+</div>
+
+<script>
+// Gera partículas flutuantes no fundo
+(function() {
+    const container = document.getElementById('particles');
+    const colors = ['#FF5E00', '#39FF14', '#00BFFF', '#fff'];
+    for (let i = 0; i < 40; i++) {
+        const p = document.createElement('div');
+        p.classList.add('particle');
+        const size = Math.random() * 4 + 2;
+        p.style.width  = size + 'px';
+        p.style.height = size + 'px';
+        p.style.background = colors[Math.floor(Math.random() * colors.length)];
+        p.style.left = Math.random() * 100 + '%';
+        p.style.animationDelay = Math.random() * 8 + 's';
+        p.style.animationDuration = (Math.random() * 6 + 6) + 's';
+        container.appendChild(p);
+    }
+})();
+</script>
+
+</body>
+</html>

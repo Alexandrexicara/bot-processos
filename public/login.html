@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login - Sistema de Processos</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="login-page">
+
+<div class="login-container">
+    <h1>Sistema de Processos</h1>
+    
+    <div class="tabs">
+        <button class="tab-btn active" onclick="mostrarTab('login', event)">Login</button>
+        <button class="tab-btn" onclick="mostrarTab('registro', event)">Cadastro</button>
+    </div>
+
+    <!-- Form Login -->
+    <form id="login-form" class="form active">
+        <input type="email" id="login-email" placeholder="Email" required>
+        <input type="password" id="login-senha" placeholder="Senha" required>
+        <button type="submit">Entrar</button>
+        <p class="erro" id="login-erro"></p>
+    </form>
+
+    <!-- Form Registro -->
+    <form id="registro-form" class="form">
+        <input type="email" id="reg-email" placeholder="Email" required>
+        <input type="password" id="reg-senha" placeholder="Senha" required>
+        <input type="password" id="reg-senha2" placeholder="Confirmar Senha" required>
+        <hr>
+        <input type="text" id="reg-telegram" placeholder="Telegram ID (opcional)">
+        <input type="text" id="reg-bot" placeholder="Token do Bot (opcional)">
+        <input type="text" id="reg-api" placeholder="API Key (opcional)">
+        <select id="reg-modo">
+            <option value="gratis">Grátis</option>
+            <option value="hibrido">Híbrido</option>
+            <option value="pago">Pago</option>
+        </select>
+        <button type="submit">Cadastrar</button>
+        <p class="erro" id="reg-erro"></p>
+        <p class="sucesso" id="reg-sucesso"></p>
+    </form>
+</div>
+
+<script src="login.js"></script>
+</body>
+</html>

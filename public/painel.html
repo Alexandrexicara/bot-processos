@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Painel - Sistema de Processos</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="navbar">
+    <h2>Sistema de Processos</h2>
+    <div class="user-info">
+        <span id="user-email"></span>
+        <span id="user-tipo" class="badge"></span>
+        <button onclick="logout()">Sair</button>
+    </div>
+</nav>
+
+<div class="container">
+    <!-- Menu Admin -->
+    <div id="menu-admin" class="menu hidden">
+        <button class="menu-btn active" onclick="mostrarSecao('processos', event)">Processos</button>
+        <button class="menu-btn" onclick="mostrarSecao('usuarios', event)">Usuários</button>
+        <button class="menu-btn" onclick="mostrarSecao('cadastrar', event)">+ Novo Usuário</button>
+    </div>
+
+    <!-- Menu Cliente -->
+    <div id="menu-cliente" class="menu">
+        <button class="menu-btn active" onclick="mostrarSecao('processos', event)">Meus Processos</button>
+        <button class="menu-btn" onclick="mostrarSecao('config', event)">Configurações</button>
+    </div>
+
+    <!-- Seção Processos -->
+    <section id="sec-processos" class="secao active">
+        <h3>Processos</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Número</th>
+                    <th>Status</th>
+                    <th>Atualizado</th>
+                    <th id="col-usuario" class="hidden">Usuário</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </section>
+
+    <!-- Seção Usuários (Admin) -->
+    <section id="sec-usuarios" class="secao">
+        <h3>Usuários Cadastrados</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Email</th>
+                    <th>Tipo</th>
+                    <th>Modo</th>
+                    <th>Cadastrado</th>
+                </tr>
+            </thead>
+            <tbody id="tbody-usuarios"></tbody>
+        </table>
+    </section>
+
+    <!-- Seção Cadastrar Usuário (Admin) -->
+    <section id="sec-cadastrar" class="secao">
+        <h3>Cadastrar Novo Usuário</h3>
+        <form id="form-usuario" class="form-cadastro">
+            <input type="email" id="cad-email" placeholder="Email" required>
+            <input type="password" id="cad-senha" placeholder="Senha" required>
+            <select id="cad-tipo">
+                <option value="cliente">Cliente</option>
+                <option value="admin">Admin</option>
+            </select>
+            <input type="text" id="cad-telegram" placeholder="Telegram ID">
+            <input type="text" id="cad-bot" placeholder="Token do Bot">
+            <input type="text" id="cad-api" placeholder="API Key">
+            <select id="cad-modo">
+                <option value="gratis">Grátis</option>
+                <option value="hibrido">Híbrido</option>
+                <option value="pago">Pago</option>
+            </select>
+            <button type="submit">Cadastrar</button>
+            <p id="cad-msg"></p>
+        </form>
+    </section>
+
+    <!-- Seção Config (Cliente) -->
+    <section id="sec-config" class="secao">
+        <h3>Minha Configuração</h3>
+        <div id="config-dados"></div>
+    </section>
+</div>
+
+<script src="painel.js"></script>
+</body>
+</html>

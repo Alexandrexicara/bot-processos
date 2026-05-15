@@ -1,0 +1,157 @@
+const token = localStorage.getItem('token');
+const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+if (!token) {
+    window.location.href = '/login.html';
+}
+
+// Configurar UI baseado no tipo de usuário
+function configurarUI() {
+    document.getElementById('user-email').textContent = user.email;
+    document.getElementById('user-tipo').textContent = user.tipo;
+
+    if (user.tipo === 'admin') {
+        document.getElementById('menu-admin').classList.remove('hidden');
+        document.getElementById('menu-cliente').classList.add('hidden');
+        document.getElementById('col-usuario').classList.remove('hidden');
+    } else {
+        document.getElementById('menu-admin').classList.add('hidden');
+        document.getElementById('menu-cliente').classList.remove('hidden');
+        document.getElementById('col-usuario').classList.add('hidden');
+    }
+}
+
+function mostrarSecao(secao, event) {
+    document.querySelectorAll('.secao').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.menu-btn').forEach(b => b.classList.remove('active'));
+    
+    document.getElementById('sec-' + secao).classList.add('active');
+    if (event && event.target) {
+        event.target.classList.add('active');
+    }
+
+    if (secao === 'usuarios') carregarUsuarios();
+    if (secao === 'config') carregarConfig();
+}
+
+async function carregarProcessos() {
+    try {
+        const res = await fetch('/processos', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const dados = await res.json();
+
+        const tbody = document.querySelector("#sec-processos tbody");
+        tbody.innerHTML = "";
+
+        dados.forEach(p => {
+            const atualizado = p.atualizado_em ? new Date(p.atualizado_em).toLocaleString() : '-';
+            const usuarioCol = user.tipo === 'admin' ? `<td>${p.usuario_email || '-'}</td>` : '';
+            
+            tbody.innerHTML += `
+            <tr>
+                <td>${p.numero}</td>
+                <td>${p.ultimo_status || '-'}</td>
+                <td>${atualizado}</td>
+                ${usuarioCol}
+            </tr>`;
+        });
+    } catch (err) {
+        console.error("Erro ao carregar processos:", err);
+    }
+}
+
+async function carregarUsuarios() {
+    if (user.tipo !== 'admin') return;
+
+    try {
+        const res = await fetch('/usuarios', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const dados = await res.json();
+
+        const tbody = document.getElementById("tbody-usuarios");
+        tbody.innerHTML = "";
+
+        dados.forEach(u => {
+            const criado = u.criado_em ? new Date(u.criado_em).toLocaleString() : '-';
+            tbody.innerHTML += `
+            <tr>
+                <td>${u.email}</td>
+                <td><span class="badge ${u.tipo}">${u.tipo}</span></td>
+                <td>${u.modo}</td>
+                <td>${criado}</td>
+            </tr>`;
+        });
+    } catch (err) {
+        console.error("Erro ao carregar usuários:", err);
+    }
+}
+
+async function carregarConfig() {
+    try {
+        const res = await fetch('/auth/me', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const dados = await res.json();
+
+        document.getElementById('config-dados').innerHTML = `
+            <p><strong>Email:</strong> ${dados.email}</p>
+            <p><strong>Tipo:</strong> ${dados.tipo}</p>
+            <p><strong>Modo:</strong> ${dados.modo}</p>
+            <p><strong>Telegram ID:</strong> ${dados.telegram_id || 'Não configurado'}</p>
+            <p><strong>Cadastrado em:</strong> ${new Date(dados.criado_em).toLocaleString()}</p>
+        `;
+    } catch (err) {
+        console.error("Erro ao carregar config:", err);
+    }
+}
+
+// Cadastrar usuário (admin)
+document.getElementById('form-usuario')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msgEl = document.getElementById('cad-msg');
+
+    try {
+        const res = await fetch('/usuario', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token 
+            },
+            body: JSON.stringify({
+                email: document.getElementById('cad-email').value,
+                senha: document.getElementById('cad-senha').value,
+                telegram_id: document.getElementById('cad-telegram').value,
+                bot_token: document.getElementById('cad-bot').value,
+                api_key: document.getElementById('cad-api').value,
+                modo: document.getElementById('cad-modo').value
+            })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            msgEl.textContent = 'Usuário criado com sucesso!';
+            msgEl.className = 'sucesso';
+            document.getElementById('form-usuario').reset();
+        } else {
+            msgEl.textContent = data.error || 'Erro ao criar usuário';
+            msgEl.className = 'erro';
+        }
+    } catch (err) {
+        msgEl.textContent = 'Erro de conexão';
+        msgEl.className = 'erro';
+    }
+});
+
+function logout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login.html';
+}
+
+// Inicializar
+configurarUI();
+carregarProcessos();
+setInterval(carregarProcessos, 5000);
