@@ -136,8 +136,44 @@ app.get('/auth/me', authMiddleware, async (req, res) => {
 
 app.listen(process.env.PORT, async () => {
     console.log(`Servidor rodando na porta ${process.env.PORT}...`);
+    await criarTabelas();
+    await criarAdminPadrao();
     await carregarBots();
 });
+
+// Criar tabelas automaticamente se não existirem (migration automática)
+async function criarTabelas() {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id SERIAL PRIMARY KEY,
+                nome VARCHAR(100),
+                email VARCHAR(255) UNIQUE NOT NULL,
+                senha TEXT NOT NULL,
+                tipo VARCHAR(20) DEFAULT 'cliente',
+                telegram_id BIGINT,
+                bot_token TEXT,
+                api_key TEXT,
+                modo VARCHAR(20) DEFAULT 'gratis',
+                criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS processos (
+                id SERIAL PRIMARY KEY,
+                numero VARCHAR(50),
+                usuario_id INTEGER REFERENCES usuarios(id),
+                ultimo_status TEXT,
+                atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        console.log('Tabelas verificadas/criadas com sucesso');
+    } catch (err) {
+        console.error('Erro ao criar tabelas:', err.message);
+    }
+}
 
 // Criar admin padrão se não existir
 async function criarAdminPadrao() {
@@ -157,5 +193,3 @@ async function criarAdminPadrao() {
         console.error('Erro ao criar admin:', err);
     }
 }
-
-criarAdminPadrao();
