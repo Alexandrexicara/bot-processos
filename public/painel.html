@@ -97,9 +97,16 @@
             
             <label style="color:#aaa; font-size:13px;">Token do Bot (do @BotFather)</label>
             <input type="text" id="cfg-bot" placeholder="Ex: 729384756:AAHqKJd8...">
-            
-            <label style="color:#aaa; font-size:13px;">🔑 API Key DataJud (grátis — CNJ)</label>
-            <input type="text" id="cfg-api" placeholder="Chave da API pública DataJud">
+
+            <label style="color:#aaa; font-size:13px;">💰 API Key Paga (Jusbrasil, Escavador, etc)</label>
+            <input type="text" id="cfg-api" placeholder="Chave da sua API paga (opcional)">
+
+            <label style="color:#aaa; font-size:13px;">Modo de Consulta</label>
+            <select id="cfg-modo">
+                <option value="gratis">🟢 Grátis — só DataJud (CNJ)</option>
+                <option value="hibrido">🟡 Híbrido — DataJud + API Paga se tiver</option>
+                <option value="pago">🟠 Pago — prioriza APIs pagas</option>
+            </select>
 
             <button type="submit">💾 Salvar e Iniciar Bot</button>
             <p id="cfg-msg"></p>
@@ -109,13 +116,11 @@
             <strong style="color:#39FF14;">📱 Como obter os dados:</strong><br>
             1. <strong>Telegram ID</strong> → fala com @userinfobot no Telegram<br>
             2. <strong>Token do Bot</strong> → cria um bot com @BotFather no Telegram<br>
-            3. <strong>API Key DataJud</strong> → opcional, melhora o acesso à API grátis do CNJ
+            3. <strong>API Paga</strong> → se contratou Jusbrasil/Escavador, cola a chave aqui
         </div>
 
-        <div style="margin-top:12px; padding:15px; background:rgba(255,94,0,0.05); border:1px solid rgba(255,94,0,0.15); border-radius:8px; font-size:13px; color:#aaa;">
-            <strong style="color:#FF5E00;">💳 APIs Pagas (Jusbrasil, Escavador, etc):</strong><br>
-            São configuradas pelo administrador do sistema nas variáveis de ambiente.<br>
-            Você não precisa se preocupar — se estiverem ativas, o sistema usa automaticamente.
+        <div style="margin-top:12px; padding:15px; background:rgba(0,191,255,0.05); border:1px solid rgba(0,191,255,0.15); border-radius:8px; font-size:13px; color:#aaa;">
+            <strong style="color:#00BFFF;">🔍 DataJud (CNJ):</strong> Já está integrado e é <strong style="color:#39FF14;">100% grátis</strong>. Funciona sempre, sem precisar de chave.
         </div>
     </section>
 </div>

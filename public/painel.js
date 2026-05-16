@@ -109,6 +109,7 @@ async function carregarConfig() {
         if (dados.telegram_id) document.getElementById('cfg-telegram').value = dados.telegram_id;
         if (dados.bot_token) document.getElementById('cfg-bot').value = dados.bot_token;
         if (dados.api_key) document.getElementById('cfg-api').value = dados.api_key;
+        if (dados.modo) document.getElementById('cfg-modo').value = dados.modo;
     } catch (err) {
         console.error("Erro ao carregar config:", err);
     }
@@ -169,7 +170,8 @@ document.getElementById('form-config')?.addEventListener('submit', async (e) => 
             body: JSON.stringify({
                 telegram_id: document.getElementById('cfg-telegram').value,
                 bot_token: document.getElementById('cfg-bot').value,
-                api_key: document.getElementById('cfg-api').value
+                api_key: document.getElementById('cfg-api').value,
+                modo: document.getElementById('cfg-modo').value
             })
         });
 

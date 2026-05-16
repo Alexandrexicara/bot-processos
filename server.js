@@ -155,21 +155,23 @@ app.put('/auth/config', authMiddleware, async (req, res) => {
     const telegram_id = limparTelegramId(req.body.telegram_id);
     const bot_token = req.body.bot_token || undefined;
     const api_key = req.body.api_key || undefined;
+    const modo = req.body.modo || undefined;
 
     try {
         // Busca dados atuais para preservar o que não foi informado
         const current = await pool.query(
-            "SELECT telegram_id, bot_token, api_key FROM usuarios WHERE id=$1",
+            "SELECT telegram_id, bot_token, api_key, modo FROM usuarios WHERE id=$1",
             [req.user.id]
         );
         const c = current.rows[0];
 
         await pool.query(
-            "UPDATE usuarios SET telegram_id=$1, bot_token=$2, api_key=$3 WHERE id=$4",
+            "UPDATE usuarios SET telegram_id=$1, bot_token=$2, api_key=$3, modo=$4 WHERE id=$5",
             [
                 telegram_id || c.telegram_id,
                 bot_token || c.bot_token,
                 api_key || c.api_key,
+                modo || c.modo,
                 req.user.id
             ]
         );
