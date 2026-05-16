@@ -8,7 +8,7 @@ CREATE TABLE usuarios (
     email VARCHAR(255) UNIQUE NOT NULL,
     senha TEXT NOT NULL,
     tipo VARCHAR(20) DEFAULT 'cliente',
-    telegram_id BIGINT,
+    telegram_id TEXT,
     bot_token TEXT,
     api_key TEXT,
     modo VARCHAR(20) DEFAULT 'gratis',

@@ -411,6 +411,105 @@
         }
         .garantia .icone { font-size: 20px; }
 
+        /* APIs Section */
+        .apis-section {
+            position: relative;
+            z-index: 5;
+            text-align: center;
+            padding: 80px 20px;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .apis-section h2 {
+            font-size: 32px;
+            font-weight: 900;
+            margin-bottom: 15px;
+        }
+        .apis-section h2 .azul { color: #00BFFF; }
+        .apis-section .subtitle {
+            color: #888;
+            margin-bottom: 50px;
+            font-size: 16px;
+        }
+
+        .apis-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .api-card {
+            background: rgba(20,20,20,0.8);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 14px;
+            padding: 25px 28px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            text-align: left;
+            transition: all 0.3s;
+        }
+        .api-card:hover {
+            border-color: rgba(0,191,255,0.3);
+            box-shadow: 0 5px 25px rgba(0,191,255,0.08);
+        }
+
+        .api-card .api-icon {
+            font-size: 36px;
+            flex-shrink: 0;
+            width: 55px;
+            height: 55px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.03);
+            border-radius: 12px;
+        }
+
+        .api-card .api-info h4 {
+            color: #fff;
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+        .api-card .api-info p {
+            color: #777;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .api-card .api-tag {
+            margin-left: auto;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            flex-shrink: 0;
+        }
+        .api-tag.gratis {
+            background: rgba(57,255,20,0.1);
+            color: #39FF14;
+            border: 1px solid rgba(57,255,20,0.2);
+        }
+        .api-tag.pago {
+            background: rgba(255,94,0,0.1);
+            color: #FF5E00;
+            border: 1px solid rgba(255,94,0,0.2);
+        }
+
+        .api-note {
+            margin-top: 35px;
+            color: #555;
+            font-size: 13px;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .api-note strong { color: #00BFFF; }
+
         /* Stats bar */
         .stats-bar {
             position: relative;
@@ -457,6 +556,7 @@
             .pricing-card { width: 100%; }
             .pricing-card.destaque { transform: scale(1); }
             .pricing-section h2 { font-size: 28px; }
+            .apis-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -473,6 +573,7 @@
     <div class="nav-links">
         <a href="#features">Recursos</a>
         <a href="#precos">Preços</a>
+        <a href="#apis">APIs</a>
         <a href="#sobre">Sobre</a>
         <a href="/login.html" class="btn-login">Entrar</a>
     </div>
@@ -566,6 +667,79 @@
         <span class="icone">🛡️</span>
         <span><strong>Garantia de 7 dias</strong> · Se não gostar, devolvemos seu dinheiro</span>
     </div>
+</section>
+
+<!-- APIs Compatíveis -->
+<section class="apis-section" id="apis">
+    <h2>APIs <span class="azul">Compatíveis</span></h2>
+    <p class="subtitle">O sistema consulta múltiplas fontes em sequência para encontrar seu processo</p>
+
+    <div class="apis-grid">
+        <!-- DataJud -->
+        <div class="api-card">
+            <div class="api-icon">🏛️</div>
+            <div class="api-info">
+                <h4>DataJud (CNJ)</h4>
+                <p>API pública e gratuita do Conselho Nacional de Justiça</p>
+            </div>
+            <span class="api-tag gratis">GRÁTIS</span>
+        </div>
+
+        <!-- Jusbrasil -->
+        <div class="api-card">
+            <div class="api-icon">⚖️</div>
+            <div class="api-info">
+                <h4>Jusbrasil</h4>
+                <p>Maior plataforma jurídica do Brasil · Dados completos</p>
+            </div>
+            <span class="api-tag pago">PAGO</span>
+        </div>
+
+        <!-- Escavador -->
+        <div class="api-card">
+            <div class="api-icon">🔎</div>
+            <div class="api-info">
+                <h4>Escavador</h4>
+                <p>Busca avançada em processos, partes e advogados</p>
+            </div>
+            <span class="api-tag pago">PAGO</span>
+        </div>
+
+        <!-- Digesto -->
+        <div class="api-card">
+            <div class="api-icon">📚</div>
+            <div class="api-info">
+                <h4>Digesto</h4>
+                <p>Jurimetria e análise inteligente de jurisprudência</p>
+            </div>
+            <span class="api-tag pago">PAGO</span>
+        </div>
+
+        <!-- Custom -->
+        <div class="api-card">
+            <div class="api-icon">🔌</div>
+            <div class="api-info">
+                <h4>API Customizada</h4>
+                <p>Integre qualquer outra API · Basta adicionar a chave</p>
+            </div>
+            <span class="api-tag pago">PAGO</span>
+        </div>
+
+        <!-- Grátis sempre -->
+        <div class="api-card">
+            <div class="api-icon">✅</div>
+            <div class="api-info">
+                <h4>Sem API paga</h4>
+                <p>O sistema funciona 100% só com o DataJud gratuito</p>
+            </div>
+            <span class="api-tag gratis">INCLUSO</span>
+        </div>
+    </div>
+
+    <p class="api-note">
+        💡 <strong>Não precisa de APIs pagas para usar.</strong> O DataJud (grátis) já cobre todo o Brasil.
+        As APIs pagas são opcionais para aumentar a cobertura.
+    </p>
 </section>
 
 <!-- Stats -->

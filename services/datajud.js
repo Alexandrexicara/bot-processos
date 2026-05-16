@@ -1,14 +1,20 @@
 const axios = require('axios');
 
-async function consultarDataJud(numero) {
+async function consultarDataJud(numero, apiKey) {
     try {
+        const headers = {};
+        if (apiKey) {
+            headers['Authorization'] = `APIKey ${apiKey}`;
+        }
+
         const res = await axios.post(
             "https://api-publica.datajud.cnj.jus.br/api_publica_tj/_search",
             {
                 query: {
                     match: { numeroProcesso: numero }
                 }
-            }
+            },
+            { headers }
         );
 
         const hit = res.data.hits.hits[0];
@@ -28,4 +34,8 @@ async function consultarDataJud(numero) {
     }
 }
 
-module.exports = { consultarDataJud };
+module.exports = {
+    nome: 'DataJud (CNJ)',
+    gratuito: true,
+    consultar: consultarDataJud
+};

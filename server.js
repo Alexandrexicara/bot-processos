@@ -8,9 +8,24 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
+// Limpa o telegram_id de links, @ e espaços
+function limparTelegramId(raw) {
+    if (!raw) return raw;
+    let id = raw.trim();
+    // Remove URLs: t.me/, https://t.me/, etc.
+    id = id.replace(/https?:\/\/t\.me\//i, '');
+    id = id.replace(/^t\.me\//i, '');
+    // Remove @ do início
+    id = id.replace(/^@/, '');
+    // Remove barras extras
+    id = id.replace(/\//g, '');
+    return id;
+}
+
 // Registro de novo usuário
 app.post('/auth/registro', async (req, res) => {
-    const { email, senha, telegram_id, bot_token, api_key, modo } = req.body;
+    const { email, senha, bot_token, api_key, modo } = req.body;
+    const telegram_id = limparTelegramId(req.body.telegram_id);
 
     try {
         const senhaHash = await hashSenha(senha);
@@ -69,7 +84,8 @@ app.post('/auth/login', async (req, res) => {
 
 // Cadastrar usuário (protegido - apenas admin)
 app.post('/usuario', authMiddleware, adminMiddleware, async (req, res) => {
-    const { telegram_id, bot_token, api_key, modo, email, senha } = req.body;
+    const { bot_token, api_key, modo, email, senha } = req.body;
+    const telegram_id = limparTelegramId(req.body.telegram_id);
 
     try {
         const senhaHash = senha ? await hashSenha(senha) : null;
@@ -151,7 +167,7 @@ async function criarTabelas() {
                 email VARCHAR(255) UNIQUE NOT NULL,
                 senha TEXT NOT NULL,
                 tipo VARCHAR(20) DEFAULT 'cliente',
-                telegram_id BIGINT,
+                telegram_id TEXT,
                 bot_token TEXT,
                 api_key TEXT,
                 modo VARCHAR(20) DEFAULT 'gratis',
@@ -170,6 +186,16 @@ async function criarTabelas() {
         `);
 
         console.log('Tabelas verificadas/criadas com sucesso');
+
+        // Migração: altera telegram_id de BIGINT para TEXT se necessário
+        try {
+            await pool.query(`
+                ALTER TABLE usuarios
+                ALTER COLUMN telegram_id TYPE TEXT
+            `);
+        } catch (e) {
+            // Já está como TEXT ou não precisa alterar
+        }
     } catch (err) {
         console.error('Erro ao criar tabelas:', err.message);
     }
