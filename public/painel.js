@@ -99,9 +99,16 @@ async function carregarConfig() {
             <p><strong>Email:</strong> ${dados.email}</p>
             <p><strong>Tipo:</strong> ${dados.tipo}</p>
             <p><strong>Modo:</strong> ${dados.modo}</p>
-            <p><strong>Telegram ID:</strong> ${dados.telegram_id || 'Não configurado'}</p>
+            <p><strong>Telegram ID:</strong> <span style="color:${dados.telegram_id ? '#39FF14' : '#ff4444'}">${dados.telegram_id || 'Não configurado'}</span></p>
+            <p><strong>Bot Token:</strong> <span style="color:${dados.bot_token ? '#39FF14' : '#ff4444'}">${dados.bot_token ? '✅ Configurado' : '❌ Não configurado'}</span></p>
+            <p><strong>API Key:</strong> ${dados.api_key ? '✅ Configurada' : 'Não configurada'}</p>
             <p><strong>Cadastrado em:</strong> ${new Date(dados.criado_em).toLocaleString()}</p>
         `;
+
+        // Preencher formulário com dados atuais
+        if (dados.telegram_id) document.getElementById('cfg-telegram').value = dados.telegram_id;
+        if (dados.bot_token) document.getElementById('cfg-bot').value = dados.bot_token;
+        if (dados.api_key) document.getElementById('cfg-api').value = dados.api_key;
     } catch (err) {
         console.error("Erro ao carregar config:", err);
     }
@@ -137,6 +144,43 @@ document.getElementById('form-usuario')?.addEventListener('submit', async (e) =>
             document.getElementById('form-usuario').reset();
         } else {
             msgEl.textContent = data.error || 'Erro ao criar usuário';
+            msgEl.className = 'erro';
+        }
+    } catch (err) {
+        msgEl.textContent = 'Erro de conexão';
+        msgEl.className = 'erro';
+    }
+});
+
+// Atualizar configuração do bot (cliente)
+document.getElementById('form-config')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msgEl = document.getElementById('cfg-msg');
+    msgEl.textContent = 'Salvando...';
+    msgEl.className = '';
+
+    try {
+        const res = await fetch('/auth/config', {
+            method: 'PUT',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token 
+            },
+            body: JSON.stringify({
+                telegram_id: document.getElementById('cfg-telegram').value,
+                bot_token: document.getElementById('cfg-bot').value,
+                api_key: document.getElementById('cfg-api').value
+            })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            msgEl.textContent = '✅ ' + data.message;
+            msgEl.className = 'sucesso';
+            carregarConfig(); // recarrega os dados
+        } else {
+            msgEl.textContent = data.error || 'Erro ao salvar';
             msgEl.className = 'erro';
         }
     } catch (err) {

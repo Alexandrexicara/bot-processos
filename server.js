@@ -141,10 +141,32 @@ app.get('/usuarios', authMiddleware, adminMiddleware, async (req, res) => {
 app.get('/auth/me', authMiddleware, async (req, res) => {
     try {
         const result = await pool.query(
-            "SELECT id, email, tipo, telegram_id, modo, criado_em FROM usuarios WHERE id = $1",
+            "SELECT id, email, tipo, telegram_id, bot_token, api_key, modo, criado_em FROM usuarios WHERE id = $1",
             [req.user.id]
         );
         res.json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Atualizar configuração do bot (usuário logado)
+app.put('/auth/config', authMiddleware, async (req, res) => {
+    const { bot_token, api_key } = req.body;
+    const telegram_id = limparTelegramId(req.body.telegram_id);
+
+    try {
+        await pool.query(
+            "UPDATE usuarios SET telegram_id=$1, bot_token=$2, api_key=$3 WHERE id=$4",
+            [telegram_id, bot_token, api_key, req.user.id]
+        );
+
+        // Se informou bot_token, inicia o bot
+        if (bot_token) {
+            await iniciarBot(bot_token, req.user.id);
+        }
+
+        res.json({ success: true, message: "Configuração atualizada e bot iniciado!" });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

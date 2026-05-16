@@ -86,8 +86,30 @@
 
     <!-- Seção Config (Cliente) -->
     <section id="sec-config" class="secao">
-        <h3>Minha Configuração</h3>
+        <h3>⚙️ Configurar Bot Telegram</h3>
         <div id="config-dados"></div>
+        
+        <form id="form-config" class="form-cadastro" style="margin-top: 25px;">
+            <h4 style="color:#FF5E00; margin-bottom: 15px;">🔧 Atualizar Dados do Bot</h4>
+            
+            <label style="color:#aaa; font-size:13px;">Telegram ID (teu @username ou número)</label>
+            <input type="text" id="cfg-telegram" placeholder="Ex: @Programadorfuture ou 582749123">
+            
+            <label style="color:#aaa; font-size:13px;">Token do Bot (do @BotFather)</label>
+            <input type="text" id="cfg-bot" placeholder="Ex: 729384756:AAHqKJd8...">
+            
+            <label style="color:#aaa; font-size:13px;">API Key DataJud (opcional)</label>
+            <input type="text" id="cfg-api" placeholder="Chave da API DataJud">
+
+            <button type="submit">💾 Salvar e Iniciar Bot</button>
+            <p id="cfg-msg"></p>
+        </form>
+
+        <div style="margin-top:15px; padding:15px; background:rgba(57,255,20,0.05); border:1px solid rgba(57,255,20,0.15); border-radius:8px; font-size:13px; color:#aaa;">
+            <strong style="color:#39FF14;">📱 Como obter os dados:</strong><br>
+            1. Telegram ID → fala com <strong>@userinfobot</strong> no Telegram<br>
+            2. Token do Bot → cria um bot com <strong>@BotFather</strong> no Telegram
+        </div>
     </section>
 </div>
 
