@@ -152,18 +152,32 @@ app.get('/auth/me', authMiddleware, async (req, res) => {
 
 // Atualizar configuração do bot (usuário logado)
 app.put('/auth/config', authMiddleware, async (req, res) => {
-    const { bot_token, api_key } = req.body;
     const telegram_id = limparTelegramId(req.body.telegram_id);
+    const bot_token = req.body.bot_token || undefined;
+    const api_key = req.body.api_key || undefined;
 
     try {
+        // Busca dados atuais para preservar o que não foi informado
+        const current = await pool.query(
+            "SELECT telegram_id, bot_token, api_key FROM usuarios WHERE id=$1",
+            [req.user.id]
+        );
+        const c = current.rows[0];
+
         await pool.query(
             "UPDATE usuarios SET telegram_id=$1, bot_token=$2, api_key=$3 WHERE id=$4",
-            [telegram_id, bot_token, api_key, req.user.id]
+            [
+                telegram_id || c.telegram_id,
+                bot_token || c.bot_token,
+                api_key || c.api_key,
+                req.user.id
+            ]
         );
 
         // Se informou bot_token, inicia o bot
-        if (bot_token) {
-            await iniciarBot(bot_token, req.user.id);
+        const tokenFinal = bot_token || c.bot_token;
+        if (tokenFinal) {
+            await iniciarBot(tokenFinal, req.user.id);
         }
 
         res.json({ success: true, message: "Configuração atualizada e bot iniciado!" });
