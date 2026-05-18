@@ -66,7 +66,15 @@ app.post('/auth/login', async (req, res) => {
             return res.status(401).json({ error: "Email ou senha incorretos" });
         }
 
+        // Bloquear login se usuário estiver inativo
+        if (user.ativo === false) {
+            return res.status(403).json({ error: "Conta bloqueada. Contacte o administrador." });
+        }
+
         const token = gerarToken(user);
+
+        // Atualizar último login
+        await pool.query("UPDATE usuarios SET ultimo_login = CURRENT_TIMESTAMP WHERE id = $1", [user.id]);
 
         res.json({
             success: true,
@@ -129,9 +137,53 @@ app.get('/processos', authMiddleware, async (req, res) => {
 app.get('/usuarios', authMiddleware, adminMiddleware, async (req, res) => {
     try {
         const data = await pool.query(
-            "SELECT id, email, tipo, telegram_id, modo, criado_em FROM usuarios ORDER BY criado_em DESC"
+            `SELECT u.id, u.email, u.tipo, u.telegram_id, u.modo, u.ativo, u.criado_em, u.ultimo_login,
+                    COUNT(p.id) as total_processos
+             FROM usuarios u
+             LEFT JOIN processos p ON p.usuario_id = u.id
+             GROUP BY u.id
+             ORDER BY u.criado_em DESC`
         );
         res.json(data.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Bloquear/desbloquear usuário (apenas admin)
+app.put('/usuario/:id', authMiddleware, adminMiddleware, async (req, res) => {
+    const { ativo, modo, tipo } = req.body;
+    const userId = req.params.id;
+
+    try {
+        const sets = [];
+        const params = [];
+        let idx = 1;
+
+        if (ativo !== undefined) {
+            sets.push(`ativo = $${idx++}`);
+            params.push(ativo);
+        }
+        if (modo !== undefined) {
+            sets.push(`modo = $${idx++}`);
+            params.push(modo);
+        }
+        if (tipo !== undefined) {
+            sets.push(`tipo = $${idx++}`);
+            params.push(tipo);
+        }
+
+        if (sets.length === 0) {
+            return res.status(400).json({ error: "Nenhum campo para atualizar" });
+        }
+
+        params.push(userId);
+        await pool.query(
+            `UPDATE usuarios SET ${sets.join(', ')} WHERE id = $${idx}`,
+            params
+        );
+
+        res.json({ success: true, message: "Usuário atualizado" });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -209,7 +261,9 @@ async function criarTabelas() {
                 bot_token TEXT,
                 api_key TEXT,
                 modo VARCHAR(20) DEFAULT 'gratis',
-                criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                ativo BOOLEAN DEFAULT true,
+                criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ultimo_login TIMESTAMP
             )
         `);
 
@@ -233,6 +287,18 @@ async function criarTabelas() {
             `);
         } catch (e) {
             // Já está como TEXT ou não precisa alterar
+        }
+
+        // Migração: adiciona colunas ativo e ultimo_login se não existirem
+        try {
+            await pool.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ativo BOOLEAN DEFAULT true`);
+        } catch (e) {
+            // Coluna já existe
+        }
+        try {
+            await pool.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultimo_login TIMESTAMP`);
+        } catch (e) {
+            // Coluna já existe
         }
     } catch (err) {
         console.error('Erro ao criar tabelas:', err.message);

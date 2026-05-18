@@ -39,7 +39,20 @@ async function carregarProcessos() {
         const res = await fetch('/processos', {
             headers: { 'Authorization': 'Bearer ' + token }
         });
+
+        // Token expirado ou inválido — redireciona para login
+        if (res.status === 401 || res.status === 403) {
+            logout();
+            return;
+        }
+
         const dados = await res.json();
+
+        // Verifica se é um array antes de iterar
+        if (!Array.isArray(dados)) {
+            console.warn('Resposta inesperada de /processos:', dados);
+            return;
+        }
 
         const tbody = document.querySelector("#sec-processos tbody");
         tbody.innerHTML = "";
@@ -75,12 +88,26 @@ async function carregarUsuarios() {
 
         dados.forEach(u => {
             const criado = u.criado_em ? new Date(u.criado_em).toLocaleString() : '-';
+            const ultimoLogin = u.ultimo_login ? new Date(u.ultimo_login).toLocaleString() : 'Nunca';
+            const ativo = u.ativo !== false; // null/true = ativo
+            const statusCor = ativo ? '#39FF14' : '#ff4444';
+            const statusTexto = ativo ? '🟢 Ativo' : '🔴 Bloqueado';
+
             tbody.innerHTML += `
             <tr>
                 <td>${u.email}</td>
                 <td><span class="badge ${u.tipo}">${u.tipo}</span></td>
                 <td>${u.modo}</td>
-                <td>${criado}</td>
+                <td>${u.total_processos || 0}</td>
+                <td><span style="color:${statusCor}; font-weight:bold;">${statusTexto}</span></td>
+                <td style="font-size:12px; color:#aaa;">${ultimoLogin}</td>
+                <td>
+                    <button onclick="toggleUsuario(${u.id}, ${!ativo})" 
+                            style="padding:5px 10px; font-size:11px; border-radius:4px; cursor:pointer;
+                                   background:${ativo ? '#ff4444' : '#39FF14'}; color:#fff; border:none;">
+                        ${ativo ? '🔒 Bloquear' : '🔓 Desbloquear'}
+                    </button>
+                </td>
             </tr>`;
         });
     } catch (err) {
@@ -192,12 +219,41 @@ document.getElementById('form-config')?.addEventListener('submit', async (e) => 
 });
 
 function logout() {
+    // Para o intervalo de recarga
+    if (intervaloProcessos) clearInterval(intervaloProcessos);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     window.location.href = '/login.html';
 }
 
+// Bloquear/desbloquear usuário (admin)
+async function toggleUsuario(userId, novoAtivo) {
+    if (!confirm('Tem certeza que deseja ' + (novoAtivo ? 'desbloquear' : 'bloquear') + ' este usuário?')) return;
+
+    try {
+        const res = await fetch('/usuario/' + userId, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ ativo: novoAtivo })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            carregarUsuarios(); // recarrega a tabela
+        } else {
+            alert('Erro: ' + (data.error || 'Falha ao atualizar'));
+        }
+    } catch (err) {
+        alert('Erro de conexão');
+    }
+}
+
 // Inicializar
+let intervaloProcessos;
 configurarUI();
 carregarProcessos();
-setInterval(carregarProcessos, 5000);
+intervaloProcessos = setInterval(carregarProcessos, 30000); // 30 seg em vez de 5
