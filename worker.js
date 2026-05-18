@@ -42,21 +42,25 @@ async function loop() {
         const bot = getBot(user.bot_token);
         if (!bot) continue;
 
-        const novo = await consultarProcesso(p.numero, user);
+        const resultados = await consultarProcesso(p.numero, user);
 
-        if (!novo) continue;
+        if (!resultados || resultados.length === 0) continue;
 
-        if (novo.data !== p.ultimo_status) {
+        // Pega o primeiro resultado (mais recente)
+        const lista = Array.isArray(resultados) ? resultados : [resultados];
+        const novo = lista[0];
 
-            await pool.query(
-                "UPDATE processos SET ultimo_status=$1, atualizado_em=CURRENT_TIMESTAMP WHERE id=$2",
-                [novo.data, p.id]
-            );
+        if (!novo.data || novo.data === p.ultimo_status) continue;
 
-            bot.sendMessage(user.telegram_id,
-                `🚨 Atualização\n${novo.numero}\n${novo.data}`
-            );
-        }
+        await pool.query(
+            "UPDATE processos SET ultimo_status=$1, atualizado_em=CURRENT_TIMESTAMP WHERE id=$2",
+            [novo.data, p.id]
+        );
+
+        bot.sendMessage(user.telegram_id,
+            `🚨 *Atualização*\n📄 ${novo.numero}\n🕒 ${novo.data}`,
+            { parse_mode: 'Markdown' }
+        );
     }
 }
 
