@@ -1,25 +1,29 @@
 const axios = require('axios');
 
-// A API DataJud pública exige o código do tribunal no path.
-// Mas alguns tribunais aceitam _search sem prefixo.
-// Se falhar, tentamos os tribunais mais comuns.
+// Endpoints por tribunal — NUNCA usar _search sem prefixo (requer auth e dá 401)
+// Cada tribunal tem seu próprio índice no Elasticsearch do CNJ
 const TRIBUNAIS = [
-    '',       // sem tribunal (todos)
     'tjsp',   // São Paulo
-    'tjba',   // Bahia
     'tjrj',   // Rio de Janeiro
     'tjmg',   // Minas Gerais
+    'tjba',   // Bahia
     'tjpr',   // Paraná
     'tjrs',   // Rio Grande do Sul
+    'tjsc',   // Santa Catarina
+    'tjdf',   // Distrito Federal
+    'tjes',   // Espírito Santo
+    'tjgo',   // Goiás
+    'tjpe',   // Pernambuco
+    'tjce',   // Ceará
     'trf1',   // TRF 1ª Região
     'trf3',   // TRF 3ª Região
     'trf4',   // TRF 4ª Região
     'trf5',   // TRF 5ª Região
 ];
 
-// Rate limiting: delay mínimo entre requisições
+// Rate limiting
 let ultimaReq = 0;
-const RATE_DELAY = 600;
+const RATE_DELAY = 400;
 
 async function aguardarRateLimit() {
     const agora = Date.now();
@@ -31,40 +35,34 @@ async function aguardarRateLimit() {
 }
 
 function buildUrl(tribunal) {
-    const base = "https://api-publica.datajud.cnj.jus.br/api_publica";
-    return tribunal ? `${base}/${tribunal}/_search` : `${base}/_search`;
+    return `https://api-publica.datajud.cnj.jus.br/api_publica/${tribunal}/_search`;
 }
 
-// Chamada à API com retry e debug completo
+// Chamada à API com autenticação e debug
 async function chamarAPI(url, params, apiKey = null, tentativa = 1) {
     await aguardarRateLimit();
 
-    const headers = {};
-    if (apiKey) {
+    const headers = { 'Content-Type': 'application/json' };
+    const temChave = !!(apiKey && apiKey.trim());
+    if (temChave) {
         headers['Authorization'] = `APIKey ${apiKey}`;
     }
 
     try {
-        console.log(`[DataJud] POST ${url}`);
-        console.log(`[DataJud] Query:`, JSON.stringify(params.query).substring(0, 200));
+        console.log(`[DataJud] POST ${url} | auth=${temChave ? 'SIM' : 'NÃO'}`);
+        console.log(`[DataJud] Query:`, JSON.stringify(params.query).substring(0, 180));
 
         const res = await axios.post(url, params, { headers, timeout: 20000 });
 
-        // DEBUG COMPLETO — sempre loga o retorno bruto resumido
         const total = res.data?.hits?.total?.value ?? res.data?.hits?.total ?? '?';
         const count = res.data?.hits?.hits?.length ?? 0;
-        console.log(`[DataJud] ✅ Resposta: total=${total}, recebidos=${count}`);
+        console.log(`[DataJud] ✅ Resposta: total=${total}, hits=${count}`);
 
-        // Log do primeiro hit para diagnosticar estrutura
         if (count > 0 && res.data.hits.hits[0]) {
-            const primeiro = res.data.hits.hits[0]._source;
-            console.log(`[DataJud] 📄 Primeiro hit:`, JSON.stringify({
-                numero: primeiro.numeroProcesso,
-                tribunal: primeiro.tribunal,
-                classe: primeiro.classe?.nome
-            }));
-        } else {
-            console.log(`[DataJud] ⚠️ Resposta vazia. Resumo:`, JSON.stringify(res.data).substring(0, 400));
+            const p = res.data.hits.hits[0]._source;
+            console.log(`[DataJud] 📄 Exemplo: ${p.numeroProcesso} | ${p.tribunal}`);
+        } else if (total == 0) {
+            console.log(`[DataJud] ⚠️ Zero resultados neste tribunal`);
         }
 
         return res.data;
@@ -72,11 +70,14 @@ async function chamarAPI(url, params, apiKey = null, tentativa = 1) {
     } catch (err) {
         const status = err.response?.status;
         const body = err.response?.data ? JSON.stringify(err.response.data).substring(0, 300) : '';
-        console.error(`[DataJud] ❌ Erro (tentativa ${tentativa}): status=${status}, ${err.message} ${body}`);
+        console.error(`[DataJud] ❌ Erro ${status} (tentativa ${tentativa}): ${body || err.message}`);
+
+        // 401 = sem autenticação neste endpoint. Pula silenciosamente.
+        if (status === 401) return null;
 
         // Rate limit (429) ou erro de servidor (5xx) — retry
         if ((status === 429 || status >= 500) && tentativa < 3) {
-            const backoff = Math.pow(2, tentativa) * 1200;
+            const backoff = Math.pow(2, tentativa) * 1000;
             console.log(`[DataJud] 🔄 Retry em ${backoff}ms...`);
             await new Promise(r => setTimeout(r, backoff));
             return chamarAPI(url, params, apiKey, tentativa + 1);
@@ -103,7 +104,7 @@ async function chamarMultiTribunal(params, apiKey) {
 
 // Busca por número de processo
 async function consultarProcesso(numero, apiKey) {
-    console.log('[DataJud] 🔍 Buscando processo:', numero);
+    console.log(`[DataJud] 🔍 Buscando processo: ${numero} | apiKey=${apiKey ? 'SIM' : 'NÃO'}`);
 
     const params = {
         query: { match: { numeroProcesso: numero } },
@@ -111,17 +112,17 @@ async function consultarProcesso(numero, apiKey) {
         sort: [{ "@timestamp": "desc" }]
     };
 
-    // Processo: tenta sem tribunal primeiro
-    const data = await chamarAPI(buildUrl(''), params, apiKey);
+    // Tenta múltiplos tribunais
+    const multi = await chamarMultiTribunal(params, apiKey);
+    if (!multi) return null;
 
-    if (!data) return null;
-
-    const hits = data.hits?.hits;
+    const hits = multi.data.hits?.hits;
     if (!hits || hits.length === 0) {
-        console.log('[DataJud] ❌ Nenhum processo encontrado para:', numero);
+        console.log('[DataJud] ❌ Processo não encontrado em nenhum tribunal');
         return null;
     }
 
+    console.log(`[DataJud] ✅ Encontrado no tribunal: ${multi.tribunal}`);
     return extrairDados(hits);
 }
 
@@ -174,16 +175,11 @@ async function consultarOAB(uf, numeroOAB, apiKey) {
             sort: [{ "@timestamp": "desc" }]
         };
 
-        // Tenta no endpoint sem tribunal primeiro
-        let data = await chamarAPI(buildUrl(''), params, apiKey);
+        // Vai direto para múltiplos tribunais (nunca usa _search sem tribunal)
+        const multi = await chamarMultiTribunal(params, apiKey);
 
-        // Se falhar, tenta tribunais específicos
-        if (!data) {
-            const multi = await chamarMultiTribunal(params, apiKey);
-            if (multi) data = multi.data;
-        }
-
-        if (!data) continue;
+        if (!multi) continue;
+        const data = multi.data;
 
         const hits = data.hits?.hits;
         if (hits && hits.length > 0) {
@@ -195,7 +191,9 @@ async function consultarOAB(uf, numeroOAB, apiKey) {
                 const paginas = Math.min(Math.ceil(total / 50), 5);
                 for (let page = 2; page <= paginas; page++) {
                     params.from = (page - 1) * 50;
-                    const mais = await chamarAPI(buildUrl(''), params, apiKey);
+                    // Usa o mesmo tribunal que retornou resultados
+                    const tribunalEncontrado = multi.tribunal || TRIBUNAIS[0];
+                    const mais = await chamarAPI(buildUrl(tribunalEncontrado), params, apiKey);
                     if (mais?.hits?.hits) {
                         hits.push(...mais.hits.hits);
                     }

@@ -18,7 +18,7 @@ async function consultarProcesso(query, user) {
 
     const modo = user?.modo || 'gratis';
 
-    console.log(`[apiRouter] Modo: ${modo}, Tipo: ${q.tipo}, Query:`, q.original || q.numero || q.texto);
+    console.log(`[apiRouter] Modo: ${modo}, Tipo: ${q.tipo}, API Key: ${user?.api_key ? 'SIM' : 'NÃO'}, Query:`, q.original || q.numero || q.texto);
 
     // Estratégia por modo:
     if (modo === 'pago') {
