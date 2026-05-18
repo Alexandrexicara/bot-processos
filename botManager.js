@@ -89,6 +89,12 @@ async function iniciarBot(token, userId) {
 }
 
 async function processarConsulta(bot, chatId, query, userId) {
+    // ⏳ Indicador "a escrever..." no Telegram enquanto busca
+    bot.sendChatAction(chatId, 'typing');
+    const typingInterval = setInterval(() => {
+        bot.sendChatAction(chatId, 'typing');
+    }, 4000);
+
     try {
         const userRes = await pool.query(
             "SELECT * FROM usuarios WHERE id=$1",
@@ -98,13 +104,27 @@ async function processarConsulta(bot, chatId, query, userId) {
 
         const resultados = await consultarProcesso(query, user);
 
+        // ⏳ Para o indicador de typing
+        clearInterval(typingInterval);
+
         if (!resultados || resultados.length === 0) {
-            bot.sendMessage(chatId,
-                '❌ *Nenhum resultado encontrado.*\n\n' +
-                'Verifique se os dados estão corretos.\n' +
-                'Para OAB, use: `/oab UF NUMERO` (ex: `/oab MS 3616`)',
-                { parse_mode: 'Markdown' }
-            );
+            if (query.tipo === 'oab') {
+                bot.sendMessage(chatId,
+                    '⚠️ *OAB não encontrada.*\n\n' +
+                    'A busca por OAB funciona através da API Escavador.\n' +
+                    'Se a chave ESCAVADOR_API_KEY não estiver configurada no servidor, a busca OAB fica limitada.\n\n' +
+                    '🔹 *Alternativa gratuita:* pesquise pelo *número do processo*\n' +
+                    '    Ex: `0001234-56.2025.8.19.0001`',
+                    { parse_mode: 'Markdown' }
+                );
+            } else {
+                bot.sendMessage(chatId,
+                    '❌ *Nenhum resultado encontrado.*\n\n' +
+                    'Verifique se o número do processo está correto.\n' +
+                    'Formato: `NNNNNNN-DD.AAAA.J.TR.OOOO` (20 dígitos)',
+                    { parse_mode: 'Markdown' }
+                );
+            }
             return;
         }
 
@@ -140,6 +160,7 @@ async function processarConsulta(bot, chatId, query, userId) {
         }
 
     } catch (err) {
+        clearInterval(typingInterval);
         console.error('[BotManager] Erro na consulta:', err);
         bot.sendMessage(chatId, '⚠️ Erro ao consultar. Tente novamente mais tarde.');
     }

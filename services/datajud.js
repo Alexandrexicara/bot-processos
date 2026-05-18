@@ -1,25 +1,36 @@
 const axios = require('axios');
 
-// Endpoints por tribunal — NUNCA usar _search sem prefixo (requer auth e dá 401)
-// Cada tribunal tem seu próprio índice no Elasticsearch do CNJ
+// Chave da API DataJud — nível servidor (.env), NÃO por utilizador
+const DATAJUD_API_KEY = process.env.DATAAJUD_API_KEY || '';
+console.log(`[DataJud] 🔑 API Key do servidor: ${DATAJUD_API_KEY ? 'SIM ✅' : 'NÃO ❌ — vai falhar 401!'}`);
+
+// Endpoints por tribunal conforme documentação oficial do CNJ
+// Formato: api_publica_{tribunal}/_search (underscore, NÃO barra!)
+// Fonte: https://datajud-wiki.cnj.jus.br/api-publica/endpoints/
 const TRIBUNAIS = [
     'tjsp',   // São Paulo
     'tjrj',   // Rio de Janeiro
     'tjmg',   // Minas Gerais
-    'tjba',   // Bahia
-    'tjpr',   // Paraná
     'tjrs',   // Rio Grande do Sul
+    'tjpr',   // Paraná
+    'tjba',   // Bahia
     'tjsc',   // Santa Catarina
-    'tjdf',   // Distrito Federal
+    'tjdft',  // Distrito Federal
     'tjes',   // Espírito Santo
     'tjgo',   // Goiás
     'tjpe',   // Pernambuco
     'tjce',   // Ceará
     'trf1',   // TRF 1ª Região
+    'trf2',   // TRF 2ª Região
     'trf3',   // TRF 3ª Região
     'trf4',   // TRF 4ª Região
     'trf5',   // TRF 5ª Região
+    'stj',    // Superior Tribunal de Justiça
+    'tst',    // Tribunal Superior do Trabalho
 ];
+
+// Para OAB, só tentamos tribunais estaduais (mais provável e mais rápido)
+const TRIBUNAIS_OAB = ['tjsp', 'tjrj', 'tjmg', 'tjrs', 'tjpr', 'tjba', 'tjsc'];
 
 // Rate limiting
 let ultimaReq = 0;
@@ -35,24 +46,27 @@ async function aguardarRateLimit() {
 }
 
 function buildUrl(tribunal) {
-    return `https://api-publica.datajud.cnj.jus.br/api_publica/${tribunal}/_search`;
+    // Formato oficial: api_publica_tjsp/_search (underscore, não barra!)
+    return `https://api-publica.datajud.cnj.jus.br/api_publica_${tribunal}/_search`;
 }
 
 // Chamada à API com autenticação e debug
-async function chamarAPI(url, params, apiKey = null, tentativa = 1) {
+async function chamarAPI(url, params, apiKeyParam = null, tentativa = 1) {
     await aguardarRateLimit();
 
     const headers = { 'Content-Type': 'application/json' };
-    const temChave = !!(apiKey && apiKey.trim());
+    // Usa a chave do servidor (.env) como padrão; pode ser sobrescrita por apiKeyParam
+    const chave = apiKeyParam || DATAJUD_API_KEY;
+    const temChave = !!(chave && chave.trim());
     if (temChave) {
-        headers['Authorization'] = `APIKey ${apiKey}`;
+        headers['Authorization'] = `APIKey ${chave}`;
     }
 
     try {
         console.log(`[DataJud] POST ${url} | auth=${temChave ? 'SIM' : 'NÃO'}`);
         console.log(`[DataJud] Query:`, JSON.stringify(params.query).substring(0, 180));
 
-        const res = await axios.post(url, params, { headers, timeout: 20000 });
+        const res = await axios.post(url, params, { headers, timeout: 30000 });
 
         const total = res.data?.hits?.total?.value ?? res.data?.hits?.total ?? '?';
         const count = res.data?.hits?.hits?.length ?? 0;
@@ -80,7 +94,7 @@ async function chamarAPI(url, params, apiKey = null, tentativa = 1) {
             const backoff = Math.pow(2, tentativa) * 1000;
             console.log(`[DataJud] 🔄 Retry em ${backoff}ms...`);
             await new Promise(r => setTimeout(r, backoff));
-            return chamarAPI(url, params, apiKey, tentativa + 1);
+            return chamarAPI(url, params, apiKeyParam, tentativa + 1);
         }
 
         return null;
@@ -88,10 +102,19 @@ async function chamarAPI(url, params, apiKey = null, tentativa = 1) {
 }
 
 // Tenta consultar em múltiplos tribunais até encontrar resultado
-async function chamarMultiTribunal(params, apiKey) {
-    for (const tribunal of TRIBUNAIS) {
+async function chamarMultiTribunal(params) {
+    return _chamarMultiTribunal(params, TRIBUNAIS);
+}
+
+// Versão para OAB — só tribunais estaduais
+async function chamarMultiTribunalOAB(params) {
+    return _chamarMultiTribunal(params, TRIBUNAIS_OAB);
+}
+
+async function _chamarMultiTribunal(params, tribunais) {
+    for (const tribunal of tribunais) {
         const url = buildUrl(tribunal);
-        const data = await chamarAPI(url, params, apiKey);
+        const data = await chamarAPI(url, params);
         if (data) {
             const hits = data.hits?.hits;
             if (hits && hits.length > 0) {
@@ -103,8 +126,8 @@ async function chamarMultiTribunal(params, apiKey) {
 }
 
 // Busca por número de processo
-async function consultarProcesso(numero, apiKey) {
-    console.log(`[DataJud] 🔍 Buscando processo: ${numero} | apiKey=${apiKey ? 'SIM' : 'NÃO'}`);
+async function consultarProcesso(numero) {
+    console.log(`[DataJud] 🔍 Buscando processo: ${numero}`);
 
     const params = {
         query: { match: { numeroProcesso: numero } },
@@ -112,8 +135,8 @@ async function consultarProcesso(numero, apiKey) {
         sort: [{ "@timestamp": "desc" }]
     };
 
-    // Tenta múltiplos tribunais
-    const multi = await chamarMultiTribunal(params, apiKey);
+    // Tenta múltiplos tribunais (API Key do servidor é usada internamente)
+    const multi = await chamarMultiTribunal(params);
     if (!multi) return null;
 
     const hits = multi.data.hits?.hits;
@@ -127,7 +150,7 @@ async function consultarProcesso(numero, apiKey) {
 }
 
 // Busca por OAB (UF + número) — tenta múltiplos formatos de query
-async function consultarOAB(uf, numeroOAB, apiKey) {
+async function consultarOAB(uf, numeroOAB) {
     console.log(`[DataJud] 🔍 Buscando OAB: ${uf} ${numeroOAB}`);
 
     // Estratégia 1: match nos campos de advogado
@@ -152,17 +175,6 @@ async function consultarOAB(uf, numeroOAB, apiKey) {
                     _all: `${uf}${numeroOAB}`
                 }
             }
-        },
-        // Estratégia C: query_string com wildcard
-        {
-            nome: 'query_string_wildcard',
-            query: {
-                query_string: {
-                    query: `*${uf}*${numeroOAB}*`,
-                    default_operator: "AND",
-                    analyze_wildcard: true
-                }
-            }
         }
     ];
 
@@ -175,8 +187,8 @@ async function consultarOAB(uf, numeroOAB, apiKey) {
             sort: [{ "@timestamp": "desc" }]
         };
 
-        // Vai direto para múltiplos tribunais (nunca usa _search sem tribunal)
-        const multi = await chamarMultiTribunal(params, apiKey);
+        // Vai direto para tribunais estaduais (só 7, mais rápido)
+        const multi = await chamarMultiTribunalOAB(params);
 
         if (!multi) continue;
         const data = multi.data;
@@ -193,7 +205,7 @@ async function consultarOAB(uf, numeroOAB, apiKey) {
                     params.from = (page - 1) * 50;
                     // Usa o mesmo tribunal que retornou resultados
                     const tribunalEncontrado = multi.tribunal || TRIBUNAIS[0];
-                    const mais = await chamarAPI(buildUrl(tribunalEncontrado), params, apiKey);
+                    const mais = await chamarAPI(buildUrl(tribunalEncontrado), params);
                     if (mais?.hits?.hits) {
                         hits.push(...mais.hits.hits);
                     }
@@ -212,18 +224,18 @@ async function consultarOAB(uf, numeroOAB, apiKey) {
 }
 
 // Consulta unificada — decide o tipo de busca com base no parser
-async function consultarDataJud(query, apiKey) {
+async function consultarDataJud(query) {
     if (query.tipo === 'oab') {
-        return consultarOAB(query.uf, query.numero, apiKey);
+        return consultarOAB(query.uf, query.numero);
     }
 
     if (query.tipo === 'processo' || query.tipo === 'nome') {
         const numero = query.numero || query.texto;
-        return consultarProcesso(numero, apiKey);
+        return consultarProcesso(numero);
     }
 
     // Fallback: trata como processo
-    return consultarProcesso(query.original || query, apiKey);
+    return consultarProcesso(query.original || query);
 }
 
 // Extrai dados padronizados dos hits

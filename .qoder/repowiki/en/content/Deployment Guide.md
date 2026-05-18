@@ -12,8 +12,16 @@
 - [services/datajud.js](file://services/datajud.js)
 - [services/premium.js](file://services/premium.js)
 - [database.sql](file://database.sql)
+- [render-setup.sql](file://render-setup.sql)
 - [README.md](file://README.md)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Added comprehensive Render Platform deployment section with specialized setup procedures
+- Updated database initialization section to cover both traditional and Render-specific deployment methods
+- Enhanced environment setup documentation with Render-specific configuration requirements
+- Added platform-specific deployment strategies and best practices
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -23,15 +31,16 @@
 5. [Detailed Component Analysis](#detailed-component-analysis)
 6. [Environment Setup](#environment-setup)
 7. [Production Deployment Strategies](#production-deployment-strategies)
-8. [Scaling Considerations](#scaling-considerations)
-9. [Monitoring and Maintenance](#monitoring-and-maintenance)
-10. [Backup and Disaster Recovery](#backup-and-disaster-recovery)
-11. [Security Hardening](#security-hardening)
-12. [Troubleshooting Guide](#troubleshooting-guide)
-13. [Conclusion](#conclusion)
+8. [Platform-Specific Deployment](#platform-specific-deployment)
+9. [Scaling Considerations](#scaling-considerations)
+10. [Monitoring and Maintenance](#monitoring-and-maintenance)
+11. [Backup and Disaster Recovery](#backup-and-disaster-recovery)
+12. [Security Hardening](#security-hardening)
+13. [Troubleshooting Guide](#troubleshooting-guide)
+14. [Conclusion](#conclusion)
 
 ## Introduction
-This guide provides comprehensive deployment instructions for the Judicial Process Monitoring SaaS application. It covers production environment requirements, containerization, process management, scaling, monitoring, backups, and security hardening. The system consists of a web server, a background worker, PostgreSQL database, and Telegram bot integrations.
+This guide provides comprehensive deployment instructions for the Judicial Process Monitoring SaaS application. It covers production environment requirements, containerization, process management, scaling, monitoring, backups, and security hardening. The system consists of a web server, a background worker, PostgreSQL database, and Telegram bot integrations. Recent enhancements include specialized deployment procedures for the Render platform, making cloud deployment more streamlined and accessible.
 
 ## Project Structure
 The application follows a modular Node.js architecture with clear separation of concerns:
@@ -56,6 +65,7 @@ end
 subgraph "Data Layer"
 DBPool["PostgreSQL Pool<br/>db.js"]
 Schema["Database Schema<br/>database.sql"]
+RenderSetup["Render Setup Script<br/>render-setup.sql"]
 end
 subgraph "External Services"
 DataJud["DataJud API<br/>services/datajud.js"]
@@ -71,10 +81,11 @@ Router --> DBPool
 Router --> DataJud
 Router --> Premium
 DBPool --> Schema
+DBPool --> RenderSetup
 ```
 
 **Diagram sources**
-- [server.js:1-162](file://server.js#L1-L162)
+- [server.js:1-326](file://server.js#L1-L326)
 - [worker.js:1-70](file://worker.js#L1-L70)
 - [db.js:1-11](file://db.js#L1-L11)
 - [auth.js:1-59](file://auth.js#L1-L59)
@@ -83,6 +94,7 @@ DBPool --> Schema
 - [services/datajud.js:1-32](file://services/datajud.js#L1-L32)
 - [services/premium.js:1-12](file://services/premium.js#L1-L12)
 - [database.sql:1-25](file://database.sql#L1-L25)
+- [render-setup.sql:1-37](file://render-setup.sql#L1-L37)
 
 **Section sources**
 - [README.md:1-56](file://README.md#L1-L56)
@@ -98,7 +110,7 @@ The Express server provides REST endpoints for user management, authentication, 
 A scheduled task that periodically checks for process updates and sends Telegram notifications. It implements caching mechanisms to optimize database queries and reduce external API calls.
 
 ### Database Layer
-PostgreSQL stores user accounts, Telegram configurations, and monitored process records. The connection pool manages database connections efficiently.
+PostgreSQL stores user accounts, Telegram configurations, and monitored process records. The connection pool manages database connections efficiently. The system now supports both traditional database initialization and Render-specific deployment procedures.
 
 ### Authentication System
 JWT-based authentication with role-based access control. Password hashing ensures secure credential storage.
@@ -107,7 +119,7 @@ JWT-based authentication with role-based access control. Password hashing ensure
 Telegram bot orchestration with automatic startup for existing users and message processing for process queries.
 
 **Section sources**
-- [server.js:1-162](file://server.js#L1-L162)
+- [server.js:1-326](file://server.js#L1-L326)
 - [worker.js:1-70](file://worker.js#L1-L70)
 - [db.js:1-11](file://db.js#L1-L11)
 - [auth.js:1-59](file://auth.js#L1-L59)
@@ -143,7 +155,7 @@ Telegram-->>Worker : Delivery Confirmation
 ```
 
 **Diagram sources**
-- [server.js:12-68](file://server.js#L12-L68)
+- [server.js:25-91](file://server.js#L25-L91)
 - [worker.js:17-61](file://worker.js#L17-L61)
 - [apiRouter.js:4-16](file://apiRouter.js#L4-L16)
 - [services/datajud.js:3-29](file://services/datajud.js#L3-L29)
@@ -151,7 +163,7 @@ Telegram-->>Worker : Delivery Confirmation
 ## Detailed Component Analysis
 
 ### Database Schema
-The system requires two primary tables for operation:
+The system requires two primary tables for operation with enhanced support for different deployment platforms:
 
 ```mermaid
 erDiagram
@@ -164,7 +176,9 @@ bigint telegram_id
 text bot_token
 text api_key
 varchar modo
+boolean ativo
 timestamp criado_em
+timestamp ultimo_login
 }
 PROCESSOS {
 serial id PK
@@ -178,9 +192,12 @@ USUARIOS ||--o{ PROCESSOS : "monitors"
 
 **Diagram sources**
 - [database.sql:5-24](file://database.sql#L5-L24)
+- [server.js:254-302](file://server.js#L254-L302)
 
 **Section sources**
 - [database.sql:1-25](file://database.sql#L1-L25)
+- [render-setup.sql:6-25](file://render-setup.sql#L6-L25)
+- [server.js:254-302](file://server.js#L254-L302)
 
 ### Authentication Flow
 The authentication system implements JWT-based session management with role verification:
@@ -269,7 +286,7 @@ Configure the following environment variables for production:
 **Section sources**
 - [db.js:4-10](file://db.js#L4-L10)
 - [auth.js:5](file://auth.js#L5)
-- [server.js:137-140](file://server.js#L137-L140)
+- [server.js:243-248](file://server.js#L243-L248)
 
 ## Production Deployment Strategies
 
@@ -324,7 +341,90 @@ Implement horizontal scaling with load balancing:
 
 **Section sources**
 - [package.json:5-10](file://package.json#L5-L10)
-- [server.js:137-140](file://server.js#L137-L140)
+- [server.js:243-248](file://server.js#L243-L248)
+
+## Platform-Specific Deployment
+
+### Render Platform Deployment
+The application now includes specialized deployment procedures for the Render platform, streamlining cloud deployment:
+
+#### Render Setup Script
+The `render-setup.sql` script provides a comprehensive setup procedure specifically designed for Render's PostgreSQL environment:
+
+**Script Features**:
+- Creates both `usuarios` and `processos` tables with proper constraints
+- Includes automatic admin user creation with predefined credentials
+- Uses conditional logic to prevent duplicate admin creation
+- Compatible with Render's PostgreSQL shell interface
+
+**Admin Account Setup**:
+- Email: `admin@sistema.com`
+- Password: `admin123` (bcrypt hashed)
+- Automatic creation when tables don't exist
+
+#### Deployment Steps for Render
+
+**Step 1: Database Preparation**
+1. Create a PostgreSQL database on Render
+2. Navigate to the Database dashboard
+3. Open the SQL Shell
+4. Copy and paste the entire `render-setup.sql` script
+5. Execute the script to create tables and admin user
+
+**Step 2: Environment Configuration**
+1. Set up environment variables in Render:
+   - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+   - `JWT_SECRET` (random secure key)
+   - `TELEGRAM_BOT_TOKEN` (your Telegram bot token)
+2. Configure build settings:
+   - Build command: `npm install`
+   - Start command: `npm start`
+   - Node version: 18.x
+
+**Step 3: Application Deployment**
+1. Connect your GitHub repository to Render
+2. Configure automatic deploys on branch push
+3. Set up health checks pointing to `/health` endpoint
+4. Configure domain mapping for production access
+
+**Step 4: Worker Configuration**
+1. Deploy the worker process separately
+2. Configure environment variables identical to web server
+3. Set up scheduling for periodic monitoring tasks
+
+#### Render-Specific Advantages
+- **Automatic Database Provisioning**: Render automatically creates and manages PostgreSQL instances
+- **Integrated Environment Variables**: Seamless environment variable management through Render's dashboard
+- **Health Monitoring**: Built-in health check integration for automatic restarts
+- **Auto-scaling**: Horizontal scaling based on traffic demand
+- **SSL/TLS**: Automatic HTTPS certificate provisioning
+- **Git Integration**: One-click deployments from GitHub repositories
+
+**Section sources**
+- [render-setup.sql:1-37](file://render-setup.sql#L1-L37)
+- [server.js:250-325](file://server.js#L250-L325)
+
+### Traditional PostgreSQL Deployment
+For environments without Render's managed services:
+
+**Database Initialization**:
+1. Create database using `database.sql` script
+2. Execute table creation commands
+3. Configure user permissions and constraints
+4. Set up initial admin account manually
+
+**Manual Setup Process**:
+```bash
+# Connect to PostgreSQL
+psql -U postgres -d postgres
+
+# Execute database.sql
+\i database.sql
+```
+
+**Section sources**
+- [database.sql:1-25](file://database.sql#L1-L25)
+- [README.md:19-27](file://README.md#L19-L27)
 
 ## Scaling Considerations
 
@@ -436,7 +536,7 @@ Regular maintenance tasks:
 - Cache invalidation strategies
 
 **Section sources**
-- [server.js:137-140](file://server.js#L137-L140)
+- [server.js:243-248](file://server.js#L243-L248)
 - [worker.js:17-61](file://worker.js#L17-L61)
 
 ## Backup and Disaster Recovery
@@ -545,7 +645,7 @@ Protect deployment infrastructure:
 **Section sources**
 - [auth.js:51-58](file://auth.js#L51-L58)
 - [db.js:4-10](file://db.js#L4-L10)
-- [server.js:12-68](file://server.js#L12-L68)
+- [server.js:25-91](file://server.js#L25-L91)
 
 ## Troubleshooting Guide
 
@@ -575,6 +675,12 @@ Protect deployment infrastructure:
 - Review user account status
 - Monitor authentication rate limits
 
+**Render Platform Specific Issues**:
+- Verify database connection string format
+- Check environment variable configuration
+- Monitor PostgreSQL instance health
+- Validate automatic admin user creation
+
 ### Diagnostic Commands
 Essential commands for troubleshooting:
 
@@ -597,9 +703,13 @@ Essential commands for troubleshooting:
 - Load balancer health checks
 
 **Section sources**
-- [server.js:137-162](file://server.js#L137-L162)
+- [server.js:243-326](file://server.js#L243-L326)
 - [worker.js:17-61](file://worker.js#L17-L61)
 - [auth.js:17-31](file://auth.js#L17-L31)
 
 ## Conclusion
-This deployment guide provides a comprehensive framework for operating the Judicial Process Monitoring SaaS application in production. By following the outlined strategies for containerization, process management, scaling, monitoring, and security hardening, you can achieve reliable, scalable, and maintainable operations. The modular architecture supports gradual scaling while maintaining system stability, and the comprehensive monitoring approach enables proactive issue resolution. Regular maintenance, backup procedures, and security hardening practices ensure long-term operational success.
+This deployment guide provides a comprehensive framework for operating the Judicial Process Monitoring SaaS application in production. The recent addition of Render platform deployment capabilities significantly simplifies cloud deployment while maintaining the robustness of the original architecture. By following the outlined strategies for containerization, process management, scaling, monitoring, and security hardening, you can achieve reliable, scalable, and maintainable operations.
+
+The specialized `render-setup.sql` script eliminates much of the complexity traditionally associated with PostgreSQL setup, while the enhanced environment configuration ensures seamless operation across different deployment platforms. The modular architecture supports gradual scaling while maintaining system stability, and the comprehensive monitoring approach enables proactive issue resolution.
+
+Regular maintenance, backup procedures, and security hardening practices ensure long-term operational success, whether deploying to traditional infrastructure or leveraging modern cloud platforms like Render. The dual deployment strategy provides flexibility for different organizational requirements while maintaining consistent functionality and reliability.
