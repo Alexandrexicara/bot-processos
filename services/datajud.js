@@ -29,6 +29,28 @@ const TRIBUNAIS = [
     'tst',    // Tribunal Superior do Trabalho
 ];
 
+// Mapeamento CNJ → código DataJud para busca direta
+// Formato CNJ: NNNNNNN-DD.AAAA.J.TR.OOOO → J.TR identifica o tribunal
+const CNJ_PARA_TRIBUNAL = {
+    '8.26': 'tjsp', '8.19': 'tjrj', '8.13': 'tjmg', '8.21': 'tjrs',
+    '8.16': 'tjpr', '8.05': 'tjba', '8.24': 'tjsc', '8.07': 'tjdft',
+    '8.08': 'tjes', '8.09': 'tjgo', '8.17': 'tjpe', '8.06': 'tjce',
+    '5.01': 'trf1', '5.02': 'trf2', '5.03': 'trf3', '5.04': 'trf4', '5.05': 'trf5',
+    '5.06': 'trf1', // trf6 usa mesmo índice do trf1
+    '1.02': 'stj',  '1.03': 'tst',
+};
+
+// Extrai o código do tribunal de um número CNJ para busca direta
+function extrairTribunalCNJ(numeroProcesso) {
+    const limpo = numeroProcesso.replace(/\D/g, '');
+    if (limpo.length < 16) return null;
+    // Posições: 0-6=sequencial, 7-8=dígitos, 9-12=ano, 13=segmento, 14-15=tribunal
+    const segmento = limpo[13];
+    const tribunal = limpo.substring(14, 16);
+    const chave = `${segmento}.${tribunal}`;
+    return CNJ_PARA_TRIBUNAL[chave] || null;
+}
+
 // Para OAB, só tentamos tribunais estaduais (mais provável e mais rápido)
 const TRIBUNAIS_OAB = ['tjsp', 'tjrj', 'tjmg', 'tjrs', 'tjpr', 'tjba', 'tjsc'];
 
@@ -125,7 +147,7 @@ async function _chamarMultiTribunal(params, tribunais) {
     return null;
 }
 
-// Busca por número de processo
+// Busca por número de processo — vai DIRETO ao tribunal pelo CNJ
 async function consultarProcesso(numero) {
     console.log(`[DataJud] 🔍 Buscando processo: ${numero}`);
 
@@ -135,7 +157,24 @@ async function consultarProcesso(numero) {
         sort: [{ "@timestamp": "desc" }]
     };
 
-    // Tenta múltiplos tribunais (API Key do servidor é usada internamente)
+    // Detecta o tribunal pelo número CNJ para busca direta (1 chamada!)
+    const tribunalCNJ = extrairTribunalCNJ(numero);
+    if (tribunalCNJ) {
+        console.log(`[DataJud] 🎯 Tribunal detectado pelo CNJ: ${tribunalCNJ}`);
+        const url = buildUrl(tribunalCNJ);
+        const data = await chamarAPI(url, params);
+        if (data) {
+            const hits = data.hits?.hits;
+            if (hits && hits.length > 0) {
+                console.log(`[DataJud] ✅ Encontrado em ${tribunalCNJ}: ${hits.length} hits`);
+                return extrairDados(hits);
+            }
+        }
+        console.log(`[DataJud] ⚠️ Não encontrado no tribunal ${tribunalCNJ}`);
+        return null;
+    }
+
+    // Sem CNJ reconhecido → tenta múltiplos tribunais
     const multi = await chamarMultiTribunal(params);
     if (!multi) return null;
 
