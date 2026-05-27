@@ -3,8 +3,37 @@ const axios = require('axios');
 // API Key via variável de ambiente: ESCAVADOR_API_KEY
 const API_KEY = process.env.ESCAVADOR_API_KEY || '';
 const BASE = 'https://api.escavador.com/api/v1';
+const BASE_V2 = 'https://api.escavador.com/api/v2';
 
-console.log(`[Escavador] 🔑 API Key: ${API_KEY ? 'SIM ✅' : 'NÃO ❌ (OAB não funcionará)'}`);
+const headers = {
+    'Authorization': `Bearer ${API_KEY}`,
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+};
+
+console.log(`[Escavador] 🔑 API Key: ${API_KEY ? 'SIM ✅' : 'NÃO ❌'}`);
+
+// Extrai array de processos da resposta (vários formatos possíveis)
+function extrairProcessos(data) {
+    if (!data) return [];
+    console.log(`[Escavador] 📦 RESPOSTA:`, JSON.stringify(data).substring(0, 500));
+    const arr = data?.items || data?.data || data?.resultados || (Array.isArray(data) ? data : []);
+    return arr.slice(0, 15);
+}
+
+// Converte processo para formato padronizado
+function formatar(p) {
+    return {
+        numero: p.numero_cnj || p.numeroProcesso || p.numero || '',
+        tribunal: p.tribunal || p.fonte || p.fontes?.[0]?.nome || '',
+        classe: p.classe || p.assunto || '',
+        data: p.data_inicio || p.data || '',
+        grau: p.grau || '',
+        orgaoJulgador: p.orgao || '',
+        polo_ativo: p.titulo_polo_ativo || '',
+        polo_passivo: p.titulo_polo_passivo || '',
+        _score: null
+    };
+}
 
 // query = objeto { tipo, uf, numero, texto, original }
 async function consultar(query) {
@@ -18,158 +47,84 @@ async function consultar(query) {
         return consultarPorOAB(query.uf, query.numero);
     }
 
-    // CPF
-    if (query.tipo === 'cpf' && query.numero) {
-        return consultarPorDocumento('cpf', query.numero);
+    // CPF / CNPJ / Nome
+    if ((query.tipo === 'cpf' || query.tipo === 'cnpj' || query.tipo === 'nome') && (query.numero || query.texto)) {
+        return consultarPorDocumento(query.tipo, query.numero || query.texto);
     }
 
-    // CNPJ
-    if (query.tipo === 'cnpj' && query.numero) {
-        return consultarPorDocumento('cnpj', query.numero);
-    }
-
-    // Nome (texto livre)
-    if (query.tipo === 'nome' && query.texto) {
-        return consultarPorDocumento('nome', query.texto);
-    }
-
-    // Busca por número de processo
+    // Processo
     const numero = typeof query === 'string' ? query : (query.numero || query.original);
     if (!numero) return null;
     return consultarPorProcesso(numero);
 }
 
-// Busca processos vinculados a uma OAB
-// Endpoint: GET /api/v1/envolvido/processos?oab_estado=MS&oab_numero=3616
+// ─── OAB ───────────────────────────────────────────
 async function consultarPorOAB(uf, numeroOAB) {
-    console.log(`[Escavador] 🔍 Buscando processos da OAB ${uf}/${numeroOAB}`);
+    console.log(`[Escavador] 🔍 Buscando OAB ${uf}/${numeroOAB}`);
 
     try {
         const res = await axios.get(`${BASE}/envolvido/processos`, {
-            params: {
-                oab_estado: uf.toUpperCase(),
-                oab_numero: numeroOAB
-            },
-            headers: { 'Authorization': `Bearer ${API_KEY}` },
+            params: { oab_estado: uf.toUpperCase(), oab_numero: numeroOAB },
+            headers,
             timeout: 30000
         });
 
-        const processos = (res.data?.items || res.data?.data || []).slice(0, 15);
-        console.log(`[Escavador] ✅ ${processos.length} processos encontrados (max 15)`);
-
-        if (processos.length === 0) return [];
-
-        // Converte para o formato padronizado do sistema
-        return processos.map(p => ({
-            numero: p.numero_cnj || p.numeroProcesso || p.numero,
-            tribunal: p.tribunal || p.fonte || '',
-            classe: p.classe || p.assunto || '',
-            data: p.data_inicio || p.data || '',
-            grau: p.grau || '',
-            orgaoJulgador: p.orgao || '',
-            polo_ativo: p.titulo_polo_ativo || '',
-            polo_passivo: p.titulo_polo_passivo || '',
-            _score: null
-        }));
+        console.log(`[Escavador] STATUS: ${res.status}`);
+        const processos = extrairProcessos(res.data);
+        console.log(`[Escavador] ✅ ${processos.length} processos (max 15)`);
+        return processos.map(formatar);
 
     } catch (err) {
-        const status = err.response?.status;
-        const msg = err.response?.data ? JSON.stringify(err.response.data).substring(0, 300) : err.message;
-        console.error(`[Escavador] ❌ Erro ${status}: ${msg}`);
+        console.error(`[Escavador] ❌ OAB: ${err.response?.status} ${err.message}`);
         return null;
     }
 }
 
-// Busca processo por número CNJ — tenta V1 (mais dados) depois V2
+// ─── Processo (CNJ) ────────────────────────────────
 async function consultarPorProcesso(numero) {
-    console.log(`[Escavador] 🔍 Buscando processo: ${numero}`);
+    // Remove máscara: só dígitos
+    const limpo = numero.replace(/\D/g, '');
+    console.log(`[Escavador] 🔍 Buscando processo: ${numero} → ${limpo}`);
 
-    // Tenta V1 primeiro (base maior)
+    // Tenta V1
     try {
-        const res = await axios.get(`https://api.escavador.com/api/v1/processos/${numero}`, {
-            headers: { 'Authorization': `Bearer ${API_KEY}` },
-            timeout: 15000
-        });
-        console.log(`[Escavador] V1 response keys: ${Object.keys(res.data || {}).join(', ')}`);
+        const res = await axios.get(`${BASE}/processos/${limpo}`, { headers, timeout: 15000 });
+        console.log(`[Escavador] V1 STATUS: ${res.status}`);
 
         const p = res.data;
-        if (p && (p.numero_cnj || p.numero || p.numeroProcesso)) {
+        if (p && (p.numero_cnj || p.numeroProcesso || p.numero)) {
             console.log('[Escavador] ✅ Encontrado via V1');
-            return [{
-                numero: p.numero_cnj || p.numeroProcesso || p.numero,
-                tribunal: p.tribunal || p.fontes?.[0]?.nome || '',
-                classe: p.classe || '',
-                data: p.data_inicio || '',
-                grau: p.grau || '',
-                orgaoJulgador: p.orgao || '',
-                _score: null
-            }];
+            return [formatar(p)];
         }
-        console.log('[Escavador] V1 retornou mas sem dados válidos, corpo:', JSON.stringify(res.data).substring(0, 300));
+        console.log('[Escavador] V1 retornou sem dados válidos');
     } catch (err) {
-        const status = err.response?.status;
-        console.log(`[Escavador] V1 falhou (${status}), tentando busca alternativa...`);
+        console.log(`[Escavador] V1: ${err.response?.status}`);
     }
 
-    // Tenta busca por texto V1
+    // Tenta V2
     try {
-        const res = await axios.get(`https://api.escavador.com/api/v1/busca`, {
-            params: { qo: numero },
-            headers: { 'Authorization': `Bearer ${API_KEY}` },
-            timeout: 15000
-        });
-        const items = res.data?.items || res.data || [];
-        if (items.length > 0) {
-            const p = Array.isArray(items) ? items[0] : items;
-            console.log('[Escavador] ✅ Encontrado via busca V1');
-            return [{
-                numero: p.numero_cnj || p.numeroProcesso || p.numero || numero,
-                tribunal: p.tribunal || p.fontes?.[0]?.nome || '',
-                classe: p.classe || '',
-                data: p.data_inicio || '',
-                grau: p.grau || '',
-                orgaoJulgador: p.orgao || '',
-                _score: null
-            }];
-        }
-    } catch (err) {
-        console.log(`[Escavador] Busca V1 falhou: ${err.message}`);
-    }
-
-    // Fallback V2
-    try {
-        const res = await axios.get(`https://api.escavador.com/api/v2/processos/${numero}`, {
-            headers: { 'Authorization': `Bearer ${API_KEY}` },
-            timeout: 15000
-        });
+        const res = await axios.get(`${BASE_V2}/processos/${limpo}`, { headers, timeout: 15000 });
+        console.log(`[Escavador] V2 STATUS: ${res.status}`);
 
         const p = res.data;
-        if (!p || !p.numero_cnj) return [];
-        console.log('[Escavador] ✅ Encontrado via V2');
-
-        return [{
-            numero: p.numero_cnj,
-            tribunal: p.tribunal || p.fontes?.[0]?.nome || '',
-            classe: p.classe || '',
-            data: p.data_inicio || '',
-            grau: p.grau || '',
-            orgaoJulgador: p.orgao || '',
-            _score: null
-        }];
-
+        if (p && (p.numero_cnj || p.numeroProcesso || p.numero)) {
+            console.log('[Escavador] ✅ Encontrado via V2');
+            return [formatar(p)];
+        }
+        console.log('[Escavador] V2 retornou sem dados válidos');
     } catch (err) {
         if (err.response?.status === 404) {
-            console.log('[Escavador] ⚠️ Processo não encontrado em nenhum endpoint');
+            console.log('[Escavador] ⚠️ Processo não encontrado');
             return [];
         }
-        const status = err.response?.status;
-        const msg = err.response?.data ? JSON.stringify(err.response.data).substring(0, 200) : err.message;
-        console.error(`[Escavador] ❌ Erro ${status}: ${msg}`);
+        console.error(`[Escavador] ❌ Processo: ${err.response?.status} ${err.message}`);
         return null;
     }
+
+    return [];
 }
 
-// Busca processos por CPF, CNPJ ou nome
+// ─── CPF / CNPJ / Nome ─────────────────────────────
 async function consultarPorDocumento(tipo, valor) {
     console.log(`[Escavador] 🔍 Buscando ${tipo}: ${valor}`);
 
@@ -181,31 +136,17 @@ async function consultarPorDocumento(tipo, valor) {
     try {
         const res = await axios.get(`${BASE}/envolvido/processos`, {
             params,
-            headers: { 'Authorization': `Bearer ${API_KEY}` },
+            headers,
             timeout: 30000
         });
 
-        const processos = (res.data?.items || []).slice(0, 15);
-        console.log(`[Escavador] ✅ ${processos.length} processos encontrados (max 15)`);
-
-        if (processos.length === 0) return [];
-
-        return processos.map(p => ({
-            numero: p.numero_cnj || p.numeroProcesso || p.numero,
-            tribunal: p.tribunal || p.fonte || '',
-            classe: p.classe || p.assunto || '',
-            data: p.data_inicio || p.data || '',
-            grau: p.grau || '',
-            orgaoJulgador: p.orgao || '',
-            polo_ativo: p.titulo_polo_ativo || '',
-            polo_passivo: p.titulo_polo_passivo || '',
-            _score: null
-        }));
+        console.log(`[Escavador] STATUS: ${res.status}`);
+        const processos = extrairProcessos(res.data);
+        console.log(`[Escavador] ✅ ${processos.length} processos (max 15)`);
+        return processos.map(formatar);
 
     } catch (err) {
-        const status = err.response?.status;
-        const msg = err.response?.data ? JSON.stringify(err.response.data).substring(0, 200) : err.message;
-        console.error(`[Escavador] ❌ Erro ${status}: ${msg}`);
+        console.error(`[Escavador] ❌ ${tipo}: ${err.response?.status} ${err.message}`);
         return null;
     }
 }
