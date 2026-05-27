@@ -22,12 +22,12 @@
 
 ## Update Summary
 **Changes Made**
-- Streamlined API service architecture to focus exclusively on Escavador integration
-- Removed all external paid service dependencies (Jusbrasil, DataJud, Digesto)
-- Simplified service discovery mechanism with empty premium services array
-- Updated architecture to reflect Escavador-first priority with enhanced document-based search capabilities
-- Enhanced parser.js to support CPF, CNPJ, and name-based search types
-- Updated botManager.js to handle new document-based search results
+- Enhanced Escavador API integration with standardized response processing functions
+- Added new `extrairProcessos()` function for unified response processing across all endpoints
+- Added new `formatar()` function for consistent data formatting and field normalization
+- Improved error handling throughout all Escavador endpoints with enhanced logging
+- Enhanced fallback mechanisms with standardized response processing
+- Streamlined API service architecture focusing on Escavador-first priority
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -37,17 +37,18 @@
 5. [Detailed Component Analysis](#detailed-component-analysis)
 6. [Escavador-First Architecture](#escavador-first-architecture)
 7. [Enhanced Document-Based Search](#enhanced-document-based-search)
-8. [Server-Level API Key Support](#server-level-api-key-support)
-9. [Dependency Analysis](#dependency-analysis)
-10. [Performance Considerations](#performance-considerations)
-11. [Troubleshooting Guide](#troubleshooting-guide)
-12. [Conclusion](#conclusion)
-13. [Appendices](#appendices)
+8. [Standardized Response Processing](#standardized-response-processing)
+9. [Server-Level API Key Support](#server-level-api-key-support)
+10. [Dependency Analysis](#dependency-analysis)
+11. [Performance Considerations](#performance-considerations)
+12. [Troubleshooting Guide](#troubleshooting-guide)
+13. [Conclusion](#conclusion)
+14. [Appendices](#appendices)
 
 ## Introduction
 This document describes the API integration layer that powers the judicial process monitoring system. The system has evolved to support a streamlined tiered access strategy with a simplified architecture where Escavador serves as the primary foundation. The unified API interface abstracts external legal database access, request/response handling, and error management while providing flexible service selection based on user subscription tiers and configuration.
 
-**Updated**: The new architecture focuses exclusively on Escavador as the base principal service, with optional premium services as secondary enhancements. The system now features enhanced document-based search capabilities with dedicated endpoints for CPF, CNPJ, and name-based queries, providing comprehensive legal research functionality.
+**Updated**: The new architecture focuses exclusively on Escavador as the base principal service, with enhanced standardized response processing and improved error handling throughout all endpoints. The system now features enhanced document-based search capabilities with dedicated CPF, CNPJ, and name-based query endpoints, providing comprehensive legal research functionality with consistent data formatting.
 
 ## Project Structure
 The system now operates as a streamlined legal database integration platform with a focused service architecture centered around Escavador:
@@ -65,6 +66,8 @@ SERVER --> ENDPOINT
 end
 subgraph "Primary Service Layer"
 ESCAVADOR["Escavador API Adapter<br/>services/escavador.js"]
+ESCAVADOR --> EXTRACT["extrairProcessos()<br/>Response Processor"]
+ESCAVADOR --> FORMAT["formatar()<br/>Data Formatter"]
 end
 subgraph "Optional Premium Services"
 PREMIUM["Legacy Premium Adapter<br/>services/premium.js"]
@@ -94,7 +97,7 @@ WORKER --> DB
 
 **Diagram sources**
 - [apiRouter.js:1-49](file://apiRouter.js#L1-L49)
-- [services/escavador.js:1-218](file://services/escavador.js#L1-L218)
+- [services/escavador.js:15-36](file://services/escavador.js#L15-L36)
 - [services/premium.js:1-12](file://services/premium.js#L1-L12)
 - [services/custom.js:1-26](file://services/custom.js#L1-L26)
 - [worker.js:1-74](file://worker.js#L1-L74)
@@ -117,14 +120,15 @@ The central orchestrator implementing a streamlined tiered access strategy:
 - **Mode-aware execution**: Differentiates between gratis, pago, and hibrido modes with simplified logic
 
 ### Primary Service Adapter (Enhanced Escavador)
-Implements robust integration with the Escavador legal research platform:
+Implements robust integration with the Escavador legal research platform with standardized response processing:
 - **Bearer token authentication**: Uses Authorization: Bearer token pattern for secure API access
 - **Multi-document search capabilities**: Supports process number searches, OAB searches, and document-based searches (CPF, CNPJ, nome)
 - **Unified document search**: Provides centralized `consultarPorDocumento` function for CPF, CNPJ, and name-based queries
 - **Process linkage**: Returns all CNJ numbers linked to OAB registrations
 - **Enhanced timeout handling**: Implements 30-second timeout for document searches and 15-second timeout for process searches
-- **Standardized response format**: Extracts and transforms relevant fields consistently across all searches
+- **Standardized response format**: Extracts and transforms relevant fields consistently across all searches using new utility functions
 - **API key validation**: Returns null when API key is not configured, preventing service attempts
+- **Enhanced error handling**: Comprehensive error logging and graceful degradation across all endpoints
 
 ### Premium Service Adapters
 Two specialized premium service adapters providing optional commercial legal database access:
@@ -149,13 +153,13 @@ JWT-based authentication system with enhanced security features:
 
 **Section sources**
 - [apiRouter.js:1-49](file://apiRouter.js#L1-L49)
-- [services/escavador.js:1-218](file://services/escavador.js#L1-L218)
+- [services/escavador.js:1-159](file://services/escavador.js#L1-L159)
 - [services/premium.js:1-12](file://services/premium.js#L1-L12)
 - [services/custom.js:1-26](file://services/custom.js#L1-L26)
 - [auth.js:1-59](file://auth.js#L1-L59)
 
 ## Architecture Overview
-The system now implements a streamlined layered architecture with Escavador as the primary foundation:
+The system now implements a streamlined layered architecture with Escavador as the primary foundation and enhanced standardized response processing:
 
 ```mermaid
 sequenceDiagram
@@ -163,12 +167,18 @@ participant User as "Telegram User"
 participant Bot as "Telegram Bot"
 participant API as "API Router"
 participant Escavador as "Escavador Service"
+participant Extract as "extrairProcessos()"
+participant Format as "formatar()"
 participant Premium as "Premium Services"
 participant DB as "Database"
 User->>Bot : Send search query
 Bot->>API : consultarProcesso(query, user)
 Note over API : Escavador-first priority
 API->>Escavador : consultar(query)
+Escavador->>Extract : Process response data
+Extract-->>Escavador : Extracted process array
+Escavador->>Format : Format individual processes
+Format-->>Escavador : Standardized process objects
 Escavador-->>API : Results or null
 alt Escavador success
 API-->>Bot : Return Escavador results
@@ -184,15 +194,16 @@ Bot-->>User : Process information
 
 **Diagram sources**
 - [apiRouter.js:8-31](file://apiRouter.js#L8-L31)
-- [services/escavador.js:10-40](file://services/escavador.js#L10-L40)
+- [services/escavador.js:15-36](file://services/escavador.js#L15-L36)
 - [services/premium.js:1-12](file://services/premium.js#L1-L12)
 
 The architecture ensures:
 - **Escavador-first priority**: Primary service selection with comprehensive coverage
 - **Conditional premium integration**: Premium services only attempted when configured and needed
 - **Fail-safe operation**: System continues functioning even if premium services fail
-- **Consistent response format**: Unified data structure across all service providers
+- **Consistent response format**: Unified data structure across all service providers using standardized functions
 - **Scalable premium service integration**: Easy addition of new commercial legal databases
+- **Enhanced error handling**: Comprehensive logging and graceful degradation across all endpoints
 
 ## Detailed Component Analysis
 
@@ -232,7 +243,7 @@ Key implementation characteristics:
 - [apiRouter.js:8-31](file://apiRouter.js#L8-L31)
 
 ### Enhanced Escavador Service Adapter
-The primary service adapter now provides comprehensive legal research platform integration with enhanced document-based search capabilities:
+The primary service adapter now provides comprehensive legal research platform integration with enhanced document-based search capabilities and standardized response processing:
 
 ```mermaid
 classDiagram
@@ -246,6 +257,10 @@ class EscavadorAdapter {
 -API_KEY String
 -BASE String
 }
+class ResponseProcessor {
++extrairProcessos(data) Object[]
++formatar(processo) Object[]
+}
 class DocumentSearch {
 -consultarPorDocumento(tipo, valor) Promise~Object[]|null~
 -extrairDados(processo) Object[]
@@ -258,13 +273,17 @@ class ProcessSearch {
 -consultarPorProcesso(numero) Promise~Object[]|null~
 -extrairDados(processo) Object[]
 }
+EscavadorAdapter --> ResponseProcessor : "uses"
 EscavadorAdapter --> DocumentSearch : "uses"
 EscavadorAdapter --> OABProcessing : "uses"
 EscavadorAdapter --> ProcessSearch : "uses"
+ResponseProcessor <|-- extrairProcessos
+ResponseProcessor <|-- formatar
 ```
 
 **Diagram sources**
-- [services/escavador.js:10-218](file://services/escavador.js#L10-L218)
+- [services/escavador.js:15-36](file://services/escavador.js#L15-L36)
+- [services/escavador.js:10-159](file://services/escavador.js#L10-L159)
 
 Implementation details:
 - **Bearer token authentication**: Uses Authorization: Bearer token pattern with configurable API key
@@ -272,11 +291,34 @@ Implementation details:
 - **Unified document search**: Centralized `consultarPorDocumento` function handles CPF, CNPJ, and name-based queries
 - **Process linkage**: Returns all CNJ numbers linked to OAB registrations
 - **Enhanced timeout handling**: Implements 30-second timeout for document searches and 15-second timeout for process searches
-- **Standardized response format**: Extracts and transforms relevant fields consistently across all searches
+- **Standardized response format**: Extracts and transforms relevant fields consistently across all searches using new utility functions
 - **API key validation**: Returns null when API key is not configured, preventing service attempts
+- **Enhanced error handling**: Comprehensive error logging with status codes and messages across all endpoints
+- **Graceful degradation**: Returns null on service errors, allowing fallback to premium services
 
 **Section sources**
-- [services/escavador.js:10-218](file://services/escavador.js#L10-L218)
+- [services/escavador.js:15-36](file://services/escavador.js#L15-L36)
+- [services/escavador.js:10-159](file://services/escavador.js#L10-L159)
+
+### Standardized Response Processing Functions
+**New**: Two critical utility functions have been added to provide standardized response processing and formatting:
+
+#### extrairProcessos() Function
+- **Purpose**: Extracts process arrays from various response formats returned by Escavador
+- **Flexibility**: Handles multiple response structures (`items`, `data`, `resultados`, direct arrays)
+- **Safety**: Includes null checking and array slicing to limit results to 15 maximum
+- **Logging**: Comprehensive logging of extracted data for debugging and monitoring
+- **Consistency**: Ensures all endpoints return consistent process array format
+
+#### formatar() Function
+- **Purpose**: Converts individual process objects to a standardized format
+- **Field normalization**: Maps various field names to unified structure (numero, tribunal, classe, data, grau, orgaoJulgador)
+- **Data extraction**: Handles multiple possible field names for each property
+- **Score handling**: Sets `_score` to null for all Escavador results
+- **Compatibility**: Ensures all results conform to the unified response schema
+
+**Section sources**
+- [services/escavador.js:15-36](file://services/escavador.js#L15-L36)
 
 ### Premium Service Adapter Pattern
 Each premium service adapter follows a consistent pattern for optional commercial legal database integration:
@@ -393,7 +435,7 @@ Monitoring features:
 - [worker.js:1-74](file://worker.js#L1-L74)
 
 ## Escavador-First Architecture
-**Updated**: The system now implements a comprehensive Escavador-first architecture that prioritizes Escavador as the primary service foundation, with premium services as optional enhancements.
+**Updated**: The system now implements a comprehensive Escavador-first architecture that prioritizes Escavador as the primary service foundation, with premium services as optional enhancements and standardized response processing.
 
 ### Escavador-First Priority Strategy
 The system follows a strict priority order with Escavador as the foundation:
@@ -443,7 +485,7 @@ Bot->>User : "⚠️ OAB não encontrada.\n\nA busca por OAB funciona através d
 - [services/escavador.js:11-14](file://services/escavador.js#L11-L14)
 
 ### Escavador Service Implementation Details
-Escavador provides comprehensive legal research platform integration with enhanced document-based search capabilities:
+Escavador provides comprehensive legal research platform integration with enhanced document-based search capabilities and standardized response processing:
 
 #### Multi-Document Search Capabilities
 - **OAB Search**: Uses `/envolvido/processos` endpoint with OAB state and number parameters
@@ -462,17 +504,18 @@ Escavador provides comprehensive legal research platform integration with enhanc
 - **Standardized format**: Converts Escavador responses to unified format with service attribution
 - **Field extraction**: Extracts relevant fields like numero, tribunal, classe, data, grau, orgaoJulgador
 - **Score handling**: Sets _score to null for Escavador results
+- **Enhanced logging**: Comprehensive logging of all response processing steps
 
 **Section sources**
 - [apiRouter.js:8-31](file://apiRouter.js#L8-L31)
-- [services/escavador.js:10-218](file://services/escavador.js#L10-L218)
+- [services/escavador.js:15-36](file://services/escavador.js#L15-L36)
 - [botManager.js:111-119](file://botManager.js#L111-L119)
 
 ## Enhanced Document-Based Search
-**Updated**: The system now features comprehensive document-based search capabilities with dedicated endpoints for CPF, CNPJ, and name-based queries.
+**Updated**: The system now features comprehensive document-based search capabilities with dedicated endpoints for CPF, CNPJ, and name-based queries and enhanced standardized response processing.
 
 ### Document Search Architecture
-The Escavador service now implements a unified document search system:
+The Escavador service now implements a unified document search system with standardized response processing:
 
 ```mermaid
 flowchart TD
@@ -484,43 +527,99 @@ CPFSearch --> DocumentEndpoint["/envolvido/processos?cpf=..."]
 CNPJSearch --> DocumentEndpoint
 NameSearch --> DocumentEndpoint
 DocumentEndpoint --> ProcessResults["Process Results<br/>Extract CNJ Numbers"]
-ProcessResults --> Standardize["Standardize Response Format"]
-Standardize --> ReturnResults["Return Unified Results"]
+ProcessResults --> ExtractFunction["extrairProcessos()<br/>Standardized Extraction"]
+ExtractFunction --> FormatFunction["formatar()<br/>Standardized Formatting"]
+FormatFunction --> ReturnResults["Return Unified Results"]
 ```
 
 **Diagram sources**
-- [services/escavador.js:173-211](file://services/escavador.js#L173-L211)
+- [services/escavador.js:127-152](file://services/escavador.js#L127-L152)
+- [services/escavador.js:15-36](file://services/escavador.js#L15-L36)
 
 ### Document Search Implementation Details
-The `consultarPorDocumento` function provides centralized document-based search functionality:
+The `consultarPorDocumento` function provides centralized document-based search functionality with enhanced standardized processing:
 
 #### CPF Search Capability
 - **Endpoint**: `/envolvido/processos?cpf={cpf}`
 - **Validation**: Accepts 11-digit CPF numbers
 - **Results**: Returns up to 15 legal cases linked to the CPF
-- **Processing**: Extracts CNJ numbers, tribunal information, and case details
+- **Processing**: Uses `extrairProcessos()` for extraction and `formatar()` for formatting
 
 #### CNPJ Search Capability
 - **Endpoint**: `/envolvido/processos?cnpj={cnpj}`
 - **Validation**: Accepts 14-digit CNPJ numbers
 - **Results**: Returns up to 15 legal cases linked to the CNPJ
-- **Processing**: Extracts CNJ numbers, tribunal information, and case details
+- **Processing**: Uses `extrairProcessos()` for extraction and `formatar()` for formatting
 
 #### Name Search Capability
 - **Endpoint**: `/envolvido/processos?nome={nome}`
 - **Validation**: Accepts text strings with minimum 3 characters
 - **Results**: Returns up to 15 legal cases containing the name
-- **Processing**: Extracts CNJ numbers, tribunal information, and case details
+- **Processing**: Uses `extrairProcessos()` for extraction and `formatar()` for formatting
 
 #### Enhanced Error Handling
 - **Timeout Management**: 30-second timeout for document searches
 - **Error Logging**: Comprehensive error logging with status codes and messages
 - **Graceful Degradation**: Returns null on service errors, allowing fallback to premium services
-- **Result Normalization**: Consistent response format across all document types
+- **Result Normalization**: Consistent response format across all document types using standardized functions
 
 **Section sources**
-- [services/escavador.js:173-211](file://services/escavador.js#L173-L211)
+- [services/escavador.js:127-152](file://services/escavador.js#L127-L152)
 - [parser.js:47-67](file://parser.js#L47-L67)
+
+## Standardized Response Processing
+**New**: The system now implements comprehensive standardized response processing with two critical utility functions that ensure consistent data formatting across all endpoints.
+
+### Response Processing Architecture
+The new standardized response processing system provides consistent data transformation:
+
+```mermaid
+flowchart TD
+RawResponse["Raw Escavador Response"] --> ExtractFunction["extrairProcessos()<br/>Universal Extraction"]
+ExtractFunction --> ProcessArray["Process Array<br/>Max 15 Results"]
+ProcessArray --> FormatFunction["formatar()<br/>Field Normalization"]
+FormatFunction --> Standardized["Standardized Object<br/>{numero, tribunal, classe, data, grau, orgaoJulgador, _score}"]
+Standardized --> UnifiedAPI["Unified API Response"]
+```
+
+**Diagram sources**
+- [services/escavador.js:15-36](file://services/escavador.js#L15-L36)
+
+### extrairProcessos() Function Implementation
+The universal response extraction function handles multiple response formats:
+
+#### Universal Extraction Logic
+- **Multiple format support**: Handles `items`, `data`, `resultados`, and direct arrays
+- **Null safety**: Includes comprehensive null checking to prevent errors
+- **Result limiting**: Slices arrays to maximum 15 results for performance
+- **Logging**: Extensive logging for debugging and monitoring purposes
+- **Flexibility**: Works with all Escavador endpoint response formats
+
+#### Implementation Details
+- **Array detection**: Uses `Array.isArray(data)` for direct array responses
+- **Property fallback**: Checks multiple possible response properties
+- **Data sanitization**: Ensures consistent array format regardless of source
+- **Performance optimization**: Limits results early to reduce processing overhead
+
+### formatar() Function Implementation
+The standardized formatting function ensures consistent field mapping:
+
+#### Field Normalization Logic
+- **Multiple field mappings**: Maps various field names to unified structure
+- **Data extraction**: Handles different possible field names for each property
+- **Empty value handling**: Provides default empty strings for missing fields
+- **Score standardization**: Sets `_score` to null for all Escavador results
+- **Compatibility**: Ensures all results conform to the unified response schema
+
+#### Implementation Details
+- **Number normalization**: Maps `numero_cnj`, `numeroProcesso`, `numero` to unified `numero`
+- **Tribunal mapping**: Handles `tribunal`, `fonte`, `fontes[0].nome` variations
+- **Class extraction**: Maps `classe`, `assunto` to unified `classe`
+- **Date handling**: Normalizes various date field names to `data`
+- **Organ standardization**: Maps `orgao` to unified `orgaoJulgador`
+
+**Section sources**
+- [services/escavador.js:15-36](file://services/escavador.js#L15-L36)
 
 ## Server-Level API Key Support
 **Updated**: Both Jusbrasil and DataJud services now support server-level API key configuration, providing enhanced flexibility for deployment scenarios.
@@ -611,6 +710,7 @@ SERVER --> AUTH
 WORKER --> API
 BOT --> API
 PARSER --> BOT
+PARSER --> ESCAVADOR
 SERVER --> PG
 WORKER --> PG
 BOT --> PG
@@ -655,7 +755,7 @@ Dependency characteristics:
 - [package.json:11-19](file://package.json#L11-L19)
 
 ## Performance Considerations
-The system implements comprehensive performance optimization strategies across all service layers:
+The system implements comprehensive performance optimization strategies across all service layers with enhanced standardized response processing:
 
 ### Multi-Tenant Caching Strategies
 - **Telegram bot instance caching**: Prevents recreation overhead with token-based caching
@@ -688,6 +788,12 @@ The system implements comprehensive performance optimization strategies across a
 - **OAB search timeouts**: 30-second timeout for OAB-based searches
 - **Error handling**: Comprehensive timeout error handling with fallback mechanisms
 
+### Standardized Response Processing Performance
+- **Early result limiting**: `extrairProcessos()` limits results to 15 maximum for performance
+- **Efficient field mapping**: `formatar()` uses direct property mapping for speed
+- **Minimal object creation**: Standardized objects created only when needed
+- **Logging optimization**: Conditional logging prevents performance impact in production
+
 ## Troubleshooting Guide
 
 ### Common Issues and Solutions
@@ -711,6 +817,11 @@ The system implements comprehensive performance optimization strategies across a
 **Problem**: Document-based searches (CPF, CNPJ, nome) failing or returning empty results
 **Solution**: Verify document format (11 digits for CPF, 14 digits for CNPJ, minimum 3 characters for names)
 **Detection**: Escavador service implements comprehensive error logging for document search failures
+
+#### Standardized Response Processing Issues
+**Problem**: Inconsistent response formats from Escavador endpoints
+**Solution**: Verify that `extrairProcessos()` and `formatar()` functions are being used consistently
+**Detection**: Check logs for standardized extraction and formatting processes
 
 #### Rate Limiting Issues
 **Problem**: API responses blocked by rate limits
@@ -739,6 +850,7 @@ The system follows consistent error handling patterns across all service layers:
 - **Graceful degradation**: System continues operating with reduced functionality
 - **User-friendly error messages**: API responses provide meaningful error information
 - **Service-specific error handling**: Each service implements appropriate error recovery
+- **Standardized response processing**: All Escavador responses pass through `extrairProcessos()` and `formatar()` functions
 
 **Section sources**
 - [services/premium.js:1-12](file://services/premium.js#L1-L12)
@@ -746,9 +858,9 @@ The system follows consistent error handling patterns across all service layers:
 - [services/escavador.js:11-14](file://services/escavador.js#L11-L14)
 
 ## Conclusion
-The API integration layer now provides a comprehensive, streamlined foundation for judicial process monitoring with Escavador as the primary service foundation. The enhanced tiered access strategy supports three distinct service modes: free Escavador service, premium paid services, and hybrid mode combining both approaches. The modular architecture allows for easy integration of additional legal database providers while maintaining consistent behavior and error handling.
+The API integration layer now provides a comprehensive, streamlined foundation for judicial process monitoring with Escavador as the primary service foundation and enhanced standardized response processing. The new `extrairProcessos()` and `formatar()` functions ensure consistent data formatting across all endpoints, while improved error handling and logging enhance system reliability. The enhanced tiered access strategy supports three distinct service modes: free Escavador service, premium paid services, and hybrid mode combining both approaches. The modular architecture allows for easy integration of additional legal database providers while maintaining consistent behavior and error handling.
 
-**Updated**: The new Escavador-first architecture significantly improves reliability and user experience by prioritizing the most comprehensive legal research platform as the primary service foundation. The enhanced document-based search capabilities with dedicated CPF, CNPJ, and name-based query endpoints provide comprehensive legal research functionality. The unified `consultarPorDocumento` function streamlines document-based searches while maintaining backward compatibility. The simplified service selection logic (Escavador → Premium) with server-level API key support enhances deployment flexibility and reduces user configuration complexity. The priority-based approach ensures maximum success rates for searches while providing comprehensive error handling and user feedback.
+**Updated**: The new Escavador-first architecture significantly improves reliability and user experience by prioritizing the most comprehensive legal research platform as the primary service foundation. The enhanced standardized response processing with `extrairProcessos()` and `formatar()` functions ensures consistent data formatting across all endpoints, while the improved error handling throughout all services provides better debugging and monitoring capabilities. The simplified service selection logic (Escavador → Premium) with server-level API key support enhances deployment flexibility and reduces user configuration complexity. The priority-based approach ensures maximum success rates for searches while providing comprehensive error handling and user feedback.
 
 The system's design emphasizes reliability, performance, scalability, and maintainability, making it suitable for enterprise-level legal database integration with support for multiple service providers and tenant contexts.
 
@@ -800,7 +912,21 @@ The system supports four distinct document-based search types:
 | `nome` | 3+ characters | `João da Silva` | Text-based legal case searches by name |
 | `oab` | UF + number | `SP 12345` | OAB-based legal case searches |
 
+### Standardized Response Processing Functions
+**New**: Two critical utility functions for consistent data processing:
+
+#### extrairProcessos() Function
+- **Purpose**: Extract process arrays from various response formats
+- **Features**: Multiple format support, null safety, result limiting, comprehensive logging
+- **Usage**: Called by all Escavador endpoints after API responses
+
+#### formatar() Function
+- **Purpose**: Convert individual process objects to standardized format
+- **Features**: Field normalization, multiple mapping support, empty value handling, score standardization
+- **Usage**: Called by all Escavador endpoints to format individual results
+
 **Section sources**
 - [parser.js:47-67](file://parser.js#L47-L67)
-- [services/escavador.js:173-211](file://services/escavador.js#L173-L211)
+- [services/escavador.js:127-152](file://services/escavador.js#L127-L152)
 - [botManager.js:115-134](file://botManager.js#L115-L134)
+- [services/escavador.js:15-36](file://services/escavador.js#L15-L36)

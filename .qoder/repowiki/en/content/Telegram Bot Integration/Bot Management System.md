@@ -19,11 +19,11 @@
 
 ## Update Summary
 **Changes Made**
-- Enhanced bot management interface with comprehensive CPF/CNPJ search instructions
-- Added new emoji-based labeling system (🪪) for improved user experience
-- Detailed examples for masked/unmasked number searches
-- Updated message parsing logic to support CPF/CNPJ detection
-- Enhanced help documentation with specific CPF/CNPJ usage examples
+- Enhanced webhook registration with comprehensive error handling and improved polling mechanism
+- Refined bot initialization logic with better environment detection and error handling
+- Added try-catch blocks around webhook registration to prevent crashes
+- Improved polling activation logic based on BASE_URL environment variable
+- Enhanced error handling during bot initialization with detailed logging
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -121,6 +121,9 @@ Key responsibilities:
 - Storing and retrieving bot tokens from the database.
 - Handling bot startup errors and duplicate initialization.
 - Managing memory by avoiding redundant bot instances.
+- **Enhanced**: Comprehensive webhook registration with error handling and environment-aware polling mechanism.
+- **Enhanced**: Try-catch blocks around webhook registration to prevent crashes during initialization.
+- **Enhanced**: Refined polling activation logic based on BASE_URL environment variable detection.
 - **Enhanced**: CPF/CNPJ search support with automatic detection and emoji-based labeling.
 - **Enhanced**: Comprehensive help documentation with specific usage examples for all search types.
 
@@ -148,7 +151,9 @@ Client->>Server : "POST /auth/registro" with {telegram_id, bot_token, ...}
 Server->>DB : "INSERT usuarios (..., bot_token)"
 Server->>BotMgr : "iniciarBot(bot_token, userId)"
 BotMgr->>BotMgr : "Check cache (token)"
-BotMgr->>BotMgr : "Create TelegramBot if missing"
+BotMgr->>BotMgr : "Create TelegramBot with options"
+BotMgr->>BotMgr : "Set webhook if BASE_URL exists"
+BotMgr->>BotMgr : "Setup message handlers"
 BotMgr->>Parser : "parseMensagem(text)"
 Parser->>Parser : "Detect CPF/CNPJ (11/14 digits)"
 BotMgr->>DB : "Listen for messages"
@@ -177,14 +182,24 @@ Worker->>BotMgr : "sendMessage(user.telegram_id, message)"
 ### Enhanced Bot Initialization and Caching
 The bot initialization function creates a TelegramBot instance for a given token and sets up a message handler. It prevents duplicate initialization by checking a global cache keyed by token. The cache ensures only one TelegramBot instance per token exists during the server lifetime. The system now includes enhanced help commands with comprehensive CPF/CNPJ search instructions and emoji-based labeling.
 
+**Updated** Enhanced with comprehensive error handling and environment-aware configuration:
+
 ```mermaid
 flowchart TD
-Start(["Call iniciarBot(token, userId)"]) --> CheckCache["Check if bots[token] exists"]
+Start(["Call iniciarBot(token, userId)"]) --> ValidateToken["Validate token exists"]
+ValidateToken --> CheckCache["Check if bots[token] exists"]
 CheckCache --> Exists{"Exists?"}
 Exists --> |Yes| Return["Return (avoid duplicate)"]
-Exists --> |No| CreateBot["Create TelegramBot(token, {polling:true})"]
-CreateBot --> SetupCommands["Setup /start, /help, /oab, /p commands"]
-SetupCommands --> SetupHandlers["Setup message handler with CPF/CNPJ support"]
+Exists --> |No| EnvCheck["Check BASE_URL environment"]
+EnvCheck --> HasBaseURL{"BASE_URL exists?"}
+HasBaseURL --> |Yes| SetWebhook["Create TelegramBot with webhook options"]
+HasBaseURL --> |No| SetPolling["Create TelegramBot with polling=true"]
+SetWebhook --> TryWebhook["try-catch webhook registration"]
+TryWebhook --> WebhookSuccess["Webhook registered successfully"]
+TryWebhook --> WebhookError["Log webhook error and continue"]
+SetPolling --> SetupHandlers["Setup message handler with CPF/CNPJ support"]
+WebhookSuccess --> SetupHandlers
+WebhookError --> SetupHandlers
 SetupHandlers --> StoreCache["Store bot in bots[token]"]
 StoreCache --> End(["Ready"])
 ```
@@ -265,6 +280,8 @@ Continue --> SendMsg["Send search message with emoji label"]
 ### Loading Existing Bot Configurations
 On server startup, the system loads all users who have a bot token configured and initializes a bot for each. This ensures that previously registered users with tokens remain active after restart.
 
+**Updated** Enhanced with comprehensive error handling during bot initialization:
+
 ```mermaid
 sequenceDiagram
 participant Server as "Express Server"
@@ -275,6 +292,8 @@ DB-->>Server : "Rows of users"
 Server->>BotMgr : "carregarBots()"
 BotMgr->>BotMgr : "Loop users"
 BotMgr->>BotMgr : "iniciarBot(user.bot_token, user.id)"
+BotMgr->>BotMgr : "try-catch individual bot initialization"
+BotMgr->>BotMgr : "Log error but continue with next bot"
 ```
 
 **Diagram sources**
@@ -459,7 +478,8 @@ Worker --> Axios["axios"]
 ## Performance Considerations
 - Instance caching: Both the server and worker cache TelegramBot instances keyed by token to avoid redundant connections and reduce overhead.
 - Query grouping: The worker groups monitored processes by user to minimize repeated user lookups and database queries.
-- Polling vs webhook: The server uses polling for simplicity; consider switching to webhooks for lower latency and reduced CPU usage in production.
+- **Enhanced**: Environment-aware polling: The server uses polling for local development (when BASE_URL is empty) and webhooks for production (when BASE_URL is set), optimizing resource usage.
+- **Enhanced**: Error containment: Try-catch blocks around webhook registration prevent individual bot initialization failures from crashing the entire system.
 - Interval tuning: The worker runs every 5 minutes; adjust intervals based on workload and external API rate limits.
 - Memory management: Avoid holding references to unused users or bots; rely on the token-keyed caches to keep memory bounded.
 - **Enhanced**: CPF/CNPJ detection optimization: The parser efficiently detects 11-digit CPF and 14-digit CNPJ numbers without performance impact.
@@ -472,6 +492,9 @@ Common issues and resolutions:
 - Database connectivity: Confirm database connection parameters and that the usuarios and processos tables exist.
 - External API timeouts: Free tier may have rate limits; consider enabling premium mode with a valid api_key for higher throughput.
 - Authentication errors: Ensure JWT_SECRET is configured and tokens are provided in the Authorization header.
+- **Enhanced**: Webhook registration failures: The system now includes comprehensive error handling for webhook registration. Check BASE_URL environment variable and network connectivity if webhook registration fails.
+- **Enhanced**: Polling vs webhook confusion: In local development (no BASE_URL), bots use polling. In production (with BASE_URL), bots use webhooks. Verify environment variables to ensure proper mode selection.
+- **Enhanced**: Environment detection issues: The system automatically detects environment based on BASE_URL. Ensure BASE_URL is properly configured for production deployments.
 - **Enhanced**: CPF/CNPJ search issues: Ensure users send 11-digit numbers for CPF and 14-digit numbers for CNPJ. The system automatically formats masked/unmasked numbers.
 - **Enhanced**: Emoji labeling problems: The system automatically adds 🪪 emoji for CPF/CNPJ searches. If labels appear incorrectly, check the parser logic for digit length detection.
 
@@ -483,4 +506,4 @@ Common issues and resolutions:
 - [parser.js:47-62](file://parser.js#L47-L62)
 
 ## Conclusion
-The Telegram bot management system provides a robust foundation for user-specific bot initialization, caching, and notification delivery. The enhanced system now includes comprehensive CPF/CNPJ search capabilities with automatic detection, emoji-based labeling (🪪), and detailed usage instructions. By leveraging token-based caching, grouped database queries, and layered authentication, it scales efficiently while maintaining reliability. The separation of concerns between the server and worker enables asynchronous monitoring and timely user notifications. The addition of emoji-based labeling improves user experience by providing clear visual indicators for different search types. Proper configuration of tokens, Telegram IDs, and database credentials is essential for smooth operation, along with understanding the enhanced CPF/CNPJ search functionality.
+The Telegram bot management system provides a robust foundation for user-specific bot initialization, caching, and notification delivery. The enhanced system now includes comprehensive CPF/CNPJ search capabilities with automatic detection, emoji-based labeling (🪪), and detailed usage instructions. The recent improvements to webhook registration with comprehensive error handling, enhanced polling mechanism with better environment detection, and refined error handling during bot initialization significantly improve system reliability and operational safety. By leveraging token-based caching, grouped database queries, and layered authentication, it scales efficiently while maintaining reliability. The separation of concerns between the server and worker enables asynchronous monitoring and timely user notifications. The addition of emoji-based labeling improves user experience by providing clear visual indicators for different search types. Proper configuration of tokens, Telegram IDs, database credentials, and BASE_URL environment variables is essential for smooth operation, along with understanding the enhanced CPF/CNPJ search functionality and improved error handling mechanisms.
