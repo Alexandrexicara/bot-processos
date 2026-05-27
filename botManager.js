@@ -18,6 +18,7 @@ async function iniciarBot(token, userId) {
             `Envie:\n` +
             `📄 *Número do processo* — ex: \`0000000-00.0000.0.00.0000\`\n` +
             `👤 *OAB* — ex: \`/oab MS 3616\` ou \`MS3616\`\n` +
+            `🪪 *CPF/CNPJ* — envia o número direto (11 ou 14 dígitos)\n` +
             `📝 *Nome da parte* — ex: \`José da Silva\`\n\n` +
             `Comandos:\n` +
             `/oab UF NUMERO — buscar por OAB\n` +
@@ -38,6 +39,8 @@ async function iniciarBot(token, userId) {
             `Envie \`/oab UF NUMERO\`\n` +
             `Ex: \`/oab MS 3616\`\n` +
             `Ou simplesmente: \`MS 3616\` / \`MS3616\`\n\n` +
+            `🪪 *Buscar por CPF/CNPJ:*\n` +
+            `Envie o número (11 dígitos CPF, 14 dígitos CNPJ)\n\n` +
             `📝 *Buscar por nome:*\n` +
             `Envie o nome da parte ou advogado\n\n` +
             `⚠️ *Importante:*\n` +
@@ -79,6 +82,8 @@ async function iniciarBot(token, userId) {
         let label = '';
         if (parsed.tipo === 'oab') label = `OAB ${parsed.uf} ${parsed.numero}`;
         else if (parsed.tipo === 'processo') label = `processo ${parsed.numero}`;
+        else if (parsed.tipo === 'cpf') label = `CPF ${parsed.numero}`;
+        else if (parsed.tipo === 'cnpj') label = `CNPJ ${parsed.numero}`;
         else label = `"${parsed.texto}"`;
 
         bot.sendMessage(msg.chat.id, `🔍 Buscando ${label}...`);

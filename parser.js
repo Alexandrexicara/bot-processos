@@ -44,14 +44,21 @@ function parseMensagem(texto) {
         return { tipo: 'processo', numero: procNum[1], original: raw };
     }
 
-    // 6. Número só com dígitos (20 dígitos = processo sem máscara)
+    // 6. Número só com dígitos
     const soDigitos = raw.replace(/\D/g, '');
     if (soDigitos.length === 20) {
+        // Processo CNJ sem máscara
         const mascarado = soDigitos.replace(
             /^(\d{7})(\d{2})(\d{4})(\d)(\d{2})(\d{4})$/,
             '$1-$2.$3.$4.$5.$6'
         );
         return { tipo: 'processo', numero: mascarado, original: raw };
+    }
+    if (soDigitos.length === 11) {
+        return { tipo: 'cpf', numero: soDigitos, original: raw };
+    }
+    if (soDigitos.length === 14) {
+        return { tipo: 'cnpj', numero: soDigitos, original: raw };
     }
 
     // 7. Fallback: texto livre (busca por nome)

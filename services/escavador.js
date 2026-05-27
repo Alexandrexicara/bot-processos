@@ -13,9 +13,24 @@ async function consultar(query) {
         return null;
     }
 
-    // Se for busca por OAB, usa endpoint específico
+    // OAB
     if (query.tipo === 'oab' && query.uf && query.numero) {
         return consultarPorOAB(query.uf, query.numero);
+    }
+
+    // CPF
+    if (query.tipo === 'cpf' && query.numero) {
+        return consultarPorDocumento('cpf', query.numero);
+    }
+
+    // CNPJ
+    if (query.tipo === 'cnpj' && query.numero) {
+        return consultarPorDocumento('cnpj', query.numero);
+    }
+
+    // Nome (texto livre)
+    if (query.tipo === 'nome' && query.texto) {
+        return consultarPorDocumento('nome', query.texto);
     }
 
     // Busca por número de processo
@@ -39,8 +54,8 @@ async function consultarPorOAB(uf, numeroOAB) {
             timeout: 30000
         });
 
-        const processos = res.data?.items || res.data?.data || [];
-        console.log(`[Escavador] ✅ ${processos.length} processos encontrados`);
+        const processos = (res.data?.items || res.data?.data || []).slice(0, 15);
+        console.log(`[Escavador] ✅ ${processos.length} processos encontrados (max 15)`);
 
         if (processos.length === 0) return [];
 
@@ -93,6 +108,47 @@ async function consultarPorProcesso(numero) {
             console.log('[Escavador] ⚠️ Processo não encontrado');
             return [];
         }
+        const status = err.response?.status;
+        const msg = err.response?.data ? JSON.stringify(err.response.data).substring(0, 200) : err.message;
+        console.error(`[Escavador] ❌ Erro ${status}: ${msg}`);
+        return null;
+    }
+}
+
+// Busca processos por CPF, CNPJ ou nome
+async function consultarPorDocumento(tipo, valor) {
+    console.log(`[Escavador] 🔍 Buscando ${tipo}: ${valor}`);
+
+    const params = {};
+    if (tipo === 'cpf') params.cpf = valor;
+    else if (tipo === 'cnpj') params.cnpj = valor;
+    else params.nome = valor;
+
+    try {
+        const res = await axios.get(`${BASE}/envolvido/processos`, {
+            params,
+            headers: { 'Authorization': `Bearer ${API_KEY}` },
+            timeout: 30000
+        });
+
+        const processos = (res.data?.items || []).slice(0, 15);
+        console.log(`[Escavador] ✅ ${processos.length} processos encontrados (max 15)`);
+
+        if (processos.length === 0) return [];
+
+        return processos.map(p => ({
+            numero: p.numero_cnj || p.numeroProcesso || p.numero,
+            tribunal: p.tribunal || p.fonte || '',
+            classe: p.classe || p.assunto || '',
+            data: p.data_inicio || p.data || '',
+            grau: p.grau || '',
+            orgaoJulgador: p.orgao || '',
+            polo_ativo: p.titulo_polo_ativo || '',
+            polo_passivo: p.titulo_polo_passivo || '',
+            _score: null
+        }));
+
+    } catch (err) {
         const status = err.response?.status;
         const msg = err.response?.data ? JSON.stringify(err.response.data).substring(0, 200) : err.message;
         console.error(`[Escavador] ❌ Erro ${status}: ${msg}`);
