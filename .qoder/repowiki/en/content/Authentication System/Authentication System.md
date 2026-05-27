@@ -13,7 +13,16 @@
 - [public/login.js](file://public/login.js)
 - [public/painel.js](file://public/painel.js)
 - [public/app.js](file://public/app.js)
+- [services/premium.js](file://services/premium.js)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Added comprehensive payment verification workflow documentation
+- Enhanced authentication endpoints section with payment-related fields
+- Updated database schema to include payment tracking columns
+- Added payment status management endpoints and UI components
+- Expanded security considerations to cover payment verification flows
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -21,21 +30,22 @@
 3. [Core Components](#core-components)
 4. [Architecture Overview](#architecture-overview)
 5. [Detailed Component Analysis](#detailed-component-analysis)
-6. [Dependency Analysis](#dependency-analysis)
-7. [Performance Considerations](#performance-considerations)
-8. [Security Considerations](#security-considerations)
-9. [Troubleshooting Guide](#troubleshooting-guide)
-10. [Conclusion](#conclusion)
+6. [Payment Verification Workflow](#payment-verification-workflow)
+7. [Dependency Analysis](#dependency-analysis)
+8. [Performance Considerations](#performance-considerations)
+9. [Security Considerations](#security-considerations)
+10. [Troubleshooting Guide](#troubleshooting-guide)
+11. [Conclusion](#conclusion)
 
 ## Introduction
-This document provides comprehensive authentication system documentation for a multi-user SaaS platform that enables users to register, log in, and manage judicial process monitoring via Telegram bots. The system implements JWT-based authentication, bcrypt password hashing, role-based access control (RBAC), and secure session management. It covers the complete authentication flow from user registration through login to token validation, along with middleware usage in API routes, token refresh mechanisms, and session management. Practical examples of authentication endpoints are included with request/response schemas, and security considerations address token expiration, CSRF protection, and secure transport requirements.
+This document provides comprehensive authentication system documentation for a multi-user SaaS platform that enables users to register, log in, and manage judicial process monitoring via Telegram bots. The system implements JWT-based authentication, bcrypt password hashing, role-based access control (RBAC), and secure session management. **Enhanced with payment verification workflow**, the system now includes payment status checks during login, user activation based on payment approval, and comprehensive payment verification logic. It covers the complete authentication flow from user registration through login to token validation, along with middleware usage in API routes, token refresh mechanisms, and session management. Practical examples of authentication endpoints are included with request/response schemas, and security considerations address token expiration, CSRF protection, and secure transport requirements.
 
 ## Project Structure
 The authentication system spans backend services, database schema, and frontend client applications. Key components include:
 - Authentication utilities: JWT token generation and verification, bcrypt password hashing, and middleware for authentication and RBAC
 - API server: Express-based endpoints for registration, login, protected resource access, and user management
-- Database: PostgreSQL schema for storing user credentials, roles, and monitored processes
-- Frontend clients: Login and dashboard pages that handle token storage and protected route access
+- Database: PostgreSQL schema for storing user credentials, roles, monitored processes, and payment verification data
+- Frontend clients: Login and dashboard pages that handle token storage, payment verification UI, and protected route access
 
 ```mermaid
 graph TB
@@ -55,6 +65,9 @@ end
 subgraph "Database"
 Schema["database.sql"]
 end
+subgraph "Services"
+Premium["services/premium.js"]
+end
 LoginJS --> Server
 PainelJS --> Server
 AppJS --> Server
@@ -65,6 +78,7 @@ Server --> BotManager
 Worker --> DB
 BotManager --> DB
 DB --> Schema
+Premium --> APIRouter
 ```
 
 **Diagram sources**
@@ -78,6 +92,7 @@ DB --> Schema
 - [public/login.js:1-91](file://public/login.js#L1-L91)
 - [public/painel.js:1-158](file://public/painel.js#L1-L158)
 - [public/app.js:1-53](file://public/app.js#L1-L53)
+- [services/premium.js:1-12](file://services/premium.js#L1-L12)
 
 **Section sources**
 - [server.js:1-162](file://server.js#L1-L162)
@@ -94,12 +109,14 @@ This section outlines the primary authentication components and their responsibi
 - Role-based middleware: enforcing admin-only access
 - API endpoints: registration, login, protected profile retrieval, and administrative user creation
 - Frontend integration: token storage and protected route access
+- **Payment verification workflow**: payment proof submission, status tracking, and user activation
 
 Key implementation patterns:
 - Token payload includes user identity and role for efficient authorization checks
 - Passwords are hashed with bcrypt before persistence
 - Middleware enforces authentication and role checks before accessing protected resources
 - Frontend stores tokens locally and attaches Authorization headers to protected requests
+- **Payment verification flow includes comprovante submission and status tracking**
 
 **Section sources**
 - [auth.js:1-59](file://auth.js#L1-L59)
@@ -109,7 +126,7 @@ Key implementation patterns:
 - [public/painel.js:37-42](file://public/painel.js#L37-L42)
 
 ## Architecture Overview
-The authentication architecture integrates frontend clients, backend API, middleware, and database. The flow begins with user registration and login, proceeds through token issuance, and continues with protected resource access enforced by middleware.
+The authentication architecture integrates frontend clients, backend API, middleware, and database. The flow begins with user registration and login, proceeds through token issuance, and continues with protected resource access enforced by middleware. **Enhanced with payment verification workflow**, users must submit payment proof and wait for admin approval before gaining full access.
 
 ```mermaid
 sequenceDiagram
@@ -118,23 +135,27 @@ participant LoginJS as "public/login.js"
 participant Server as "server.js"
 participant Auth as "auth.js"
 participant DB as "db.js"
-Client->>LoginJS : "Submit registration form"
+Client->>LoginJS : "Submit registration form with comprovante"
 LoginJS->>Server : "POST /auth/registro"
 Server->>Auth : "hashSenha(senha)"
 Auth-->>Server : "hashed password"
-Server->>DB : "INSERT user record"
+Server->>DB : "INSERT user record with ativo=false, status_pagamento='pendente'"
 DB-->>Server : "success"
-Server-->>LoginJS : "{success : true}"
+Server-->>LoginJS : "{success : true, message, pagamento}"
 Client->>LoginJS : "Submit login form"
 LoginJS->>Server : "POST /auth/login"
 Server->>DB : "SELECT user by email"
-DB-->>Server : "user record"
+DB-->>Server : "user record (ativo=false)"
 Server->>Auth : "verificarSenha(input, hash)"
 Auth-->>Server : "match result"
 Server->>Auth : "gerarToken(user)"
 Auth-->>Server : "JWT token"
-Server-->>LoginJS : "{success : true, token, user}"
-LoginJS->>LoginJS : "store token in localStorage"
+Server-->>LoginJS : "{success : false, error : 'Conta bloqueada. Contacte o administrador.'}"
+Client->>LoginJS : "Submit comprovante via /auth/comprovante"
+LoginJS->>Server : "PUT /auth/comprovante"
+Server->>DB : "UPDATE user.comprovante, status_pagamento='pendente'"
+DB-->>Server : "success"
+Server-->>LoginJS : "{success : true, message}"
 ```
 
 **Diagram sources**
@@ -286,26 +307,28 @@ The system exposes the following authentication-related endpoints:
 
 - POST /auth/registro
   - Purpose: Register a new user with hashed password and optional Telegram bot configuration
-  - Request body: email, senha, telegram_id, bot_token, api_key, modo
-  - Response: success flag, user id, message
+  - Request body: email, senha, telegram_id, bot_token, api_key, modo, comprovante
+  - Response: success flag, user id, message, pagamento (payment instructions)
   - Security: Password hashed before insertion; duplicate email detection handled
+  - **Enhanced**: User created with ativo=false and status_pagamento='pendente'
 
 - POST /auth/login
   - Purpose: Authenticate user and return JWT token
   - Request body: email, senha
-  - Response: success flag, token, user {id, email, tipo}
+  - Response: success flag, token, user {id, email, tipo, ativo, status_pagamento}
   - Security: Password verified against stored hash; token issued with 24h expiration
+  - **Enhanced**: Login blocked for inactive users (ativo=false)
 
 - GET /auth/me
   - Purpose: Retrieve authenticated user's profile
   - Headers: Authorization: Bearer <token>
-  - Response: user profile fields including role and mode
+  - Response: user profile fields including role, mode, and payment status
   - Security: Requires valid JWT; user id extracted from token payload
 
 - POST /usuario (admin)
   - Purpose: Create a new user (admin-only)
   - Headers: Authorization: Bearer <token>
-  - Request body: email, senha, telegram_id, bot_token, api_key, modo
+  - Request body: email, senha, telegram_id, bot_token, api_key, modo, tipo
   - Response: success flag, user id, message
   - Security: Requires admin role; password hashed before insertion
 
@@ -318,14 +341,89 @@ The system exposes the following authentication-related endpoints:
 - GET /usuarios (admin)
   - Purpose: List all users (admin-only)
   - Headers: Authorization: Bearer <token>
-  - Response: array of user records
+  - Response: array of user records including payment status and comprovante
   - Security: Requires admin role
+
+- PUT /auth/comprovante (authenticated)
+  - Purpose: Submit payment proof for user account verification
+  - Headers: Authorization: Bearer <token>
+  - Request body: comprovante (payment proof URL)
+  - Response: success flag, message indicating pending approval
+  - Security: Requires authentication; updates comprovante and status_pagamento fields
+
+- PUT /usuario/:id (admin)
+  - Purpose: Update user account settings (admin-only)
+  - Headers: Authorization: Bearer <token>
+  - Request body: ativo, modo, tipo, status_pagamento
+  - Response: success flag, message
+  - Security: Requires admin role; allows payment status updates
 
 **Section sources**
 - [server.js:11-68](file://server.js#L11-L68)
+- [server.js:61-101](file://server.js#L61-L101)
 - [server.js:70-92](file://server.js#L70-L92)
 - [server.js:94-122](file://server.js#L94-L122)
 - [server.js:124-135](file://server.js#L124-L135)
+- [server.js:259-273](file://server.js#L259-L273)
+- [server.js:165-206](file://server.js#L165-L206)
+
+## Payment Verification Workflow
+
+**Updated** Enhanced authentication system now includes comprehensive payment verification workflow
+
+The payment verification workflow adds a crucial layer to the authentication system, enabling subscription-based access control:
+
+### Payment Flow Architecture
+```mermaid
+flowchart TD
+UserRegistration["User Registration"] --> PaymentProof["Submit Payment Proof"]
+PaymentProof --> PendingApproval["Pending Approval State"]
+PendingApproval --> AdminReview["Admin Review"]
+AdminReview --> Approved["Payment Approved"]
+AdminReview --> Rejected["Payment Rejected"]
+Approved --> ActivateAccount["Activate User Account"]
+Rejected --> BlockedAccess["Blocked Access"]
+ActivateAccount --> FullAccess["Full System Access"]
+BlockedAccess --> WaitApproval["Wait for Approval"]
+WaitApproval --> RetrySubmission["Retry Payment Submission"]
+RetrySubmission --> PendingApproval
+```
+
+**Diagram sources**
+- [server.js:25-59](file://server.js#L25-L59)
+- [server.js:61-101](file://server.js#L61-L101)
+- [server.js:165-206](file://server.js#L165-L206)
+- [public/login.js:37-40](file://public/login.js#L37-L40)
+
+### Database Schema Enhancements
+The user table has been enhanced with payment-related fields:
+
+- **comprovante**: Stores payment proof URL or identifier
+- **status_pagamento**: Tracks payment verification status (pendente, aprovado, rejeitado)
+- **ativo**: Controls account activation state (true/false)
+
+Migration script automatically adds these columns to existing installations.
+
+### Frontend Payment UI Components
+The login interface provides clear feedback for payment-pending accounts:
+
+- **Payment Instructions**: Displays Pix payment details when account is pending approval
+- **Status Indicators**: Shows payment status in user dashboard
+- **Comprovante Upload**: Allows users to submit payment proof
+
+### Admin Payment Management
+Administrators can manage payment verification through the dashboard:
+
+- **Payment Status View**: Color-coded status indicators (green for approved, yellow for pending, red for rejected)
+- **Direct Approve/Reject**: One-click payment approval or rejection
+- **Comprovante Preview**: Links to submitted payment proof documents
+
+**Section sources**
+- [server.js:25-59](file://server.js#L25-L59)
+- [server.js:61-101](file://server.js#L61-L101)
+- [server.js:165-206](file://server.js#L165-L206)
+- [public/login.js:37-40](file://public/login.js#L37-L40)
+- [public/painel.js:96-136](file://public/painel.js#L96-L136)
 
 ## Dependency Analysis
 The authentication system relies on several external libraries and internal modules:
@@ -346,6 +444,7 @@ Auth --> BCrypt["bcryptjs"]
 DB --> PG["pg"]
 BotManager --> APIRouter
 Worker["worker.js"] --> DB
+Premium["services/premium.js"] --> APIRouter
 ```
 
 **Diagram sources**
@@ -355,6 +454,7 @@ Worker["worker.js"] --> DB
 - [botManager.js:1-4](file://botManager.js#L1-L4)
 - [worker.js:1-5](file://worker.js#L1-L5)
 - [package.json:11-19](file://package.json#L11-L19)
+- [services/premium.js:1-12](file://services/premium.js#L1-L12)
 
 **Section sources**
 - [package.json:11-19](file://package.json#L11-L19)
@@ -367,6 +467,7 @@ Worker["worker.js"] --> DB
 - Database queries: Use prepared statements and parameterized queries to prevent SQL injection and improve performance
 - Middleware chain: Keep middleware lightweight; avoid heavy computations in auth middlewares
 - Frontend caching: Cache user data locally to reduce repeated API calls for the same session
+- **Payment verification**: Index payment-related fields for faster admin dashboard queries
 
 ## Security Considerations
 - Token expiration: JWT tokens expire after 24 hours; consider implementing refresh endpoints for continuous sessions
@@ -378,6 +479,8 @@ Worker["worker.js"] --> DB
 - Secret management: Store JWT_SECRET and database credentials in environment variables
 - Rate limiting: Implement rate limiting on authentication endpoints to prevent brute force attacks
 - Audit logging: Log authentication events and failed attempts for security monitoring
+- **Payment security**: Store payment proof URLs securely; implement access controls for admin-only payment review
+- **Account activation**: Prevent login for inactive users until payment is verified
 
 ## Troubleshooting Guide
 Common authentication issues and resolutions:
@@ -386,6 +489,8 @@ Common authentication issues and resolutions:
 - 403 Access restricted to administrators: Confirm user role is set to admin
 - 400 Email already registered: Handle duplicate email errors gracefully in frontend
 - 401 Email or password incorrect: Verify credentials match stored hash
+- **403 Conta bloqueada**: User account pending payment verification; contact administrator
+- **500 Payment verification errors**: Check payment proof URL format and admin approval status
 - Token not persisting: Check browser local storage permissions and CORS configuration
 
 Debugging steps:
@@ -394,6 +499,7 @@ Debugging steps:
 - Validate JWT secret configuration
 - Inspect network tab for Authorization header presence
 - Review server logs for authentication errors
+- **Check payment verification fields**: Verify comprovante and status_pagamento values in database
 
 **Section sources**
 - [server.js:20-35](file://server.js#L20-L35)
@@ -402,4 +508,4 @@ Debugging steps:
 - [public/login.js:37-42](file://public/login.js#L37-L42)
 
 ## Conclusion
-The authentication system provides a robust foundation for user registration, login, and role-based access control. JWT tokens with 24-hour expiration, bcrypt password hashing, and middleware-based authorization create a secure and scalable solution. The frontend integration demonstrates practical token storage and protected route access. For production deployment, consider implementing refresh endpoints, secure cookie storage, CSRF protection, and enhanced input validation to meet enterprise security requirements.
+The authentication system provides a robust foundation for user registration, login, and role-based access control. **Enhanced with payment verification workflow**, the system now supports subscription-based access control with comprehensive payment proof submission, admin approval processes, and automated user activation. JWT tokens with 24-hour expiration, bcrypt password hashing, and middleware-based authorization create a secure and scalable solution. The frontend integration demonstrates practical token storage, payment UI components, and protected route access. For production deployment, consider implementing refresh endpoints, secure cookie storage, CSRF protection, and enhanced input validation to meet enterprise security requirements. The payment verification workflow adds significant business value while maintaining the system's security and scalability.

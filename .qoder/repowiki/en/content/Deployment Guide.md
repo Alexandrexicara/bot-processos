@@ -13,6 +13,7 @@
 - [services/premium.js](file://services/premium.js)
 - [database.sql](file://database.sql)
 - [render-setup.sql](file://render-setup.sql)
+- [render.yaml](file://render.yaml)
 - [README.md](file://README.md)
 </cite>
 
@@ -22,6 +23,7 @@
 - Updated database initialization section to cover both traditional and Render-specific deployment methods
 - Enhanced environment setup documentation with Render-specific configuration requirements
 - Added platform-specific deployment strategies and best practices
+- Integrated Render YAML configuration for automated deployment setup
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -66,6 +68,7 @@ subgraph "Data Layer"
 DBPool["PostgreSQL Pool<br/>db.js"]
 Schema["Database Schema<br/>database.sql"]
 RenderSetup["Render Setup Script<br/>render-setup.sql"]
+RenderYaml["Render Configuration<br/>render.yaml"]
 end
 subgraph "External Services"
 DataJud["DataJud API<br/>services/datajud.js"]
@@ -82,19 +85,22 @@ Router --> DataJud
 Router --> Premium
 DBPool --> Schema
 DBPool --> RenderSetup
+RenderYaml --> Server
+RenderYaml --> DBPool
 ```
 
 **Diagram sources**
-- [server.js:1-326](file://server.js#L1-L326)
-- [worker.js:1-70](file://worker.js#L1-L70)
-- [db.js:1-11](file://db.js#L1-L11)
+- [server.js:1-366](file://server.js#L1-L366)
+- [worker.js:1-74](file://worker.js#L1-L74)
+- [db.js:1-19](file://db.js#L1-L19)
 - [auth.js:1-59](file://auth.js#L1-L59)
-- [botManager.js:1-53](file://botManager.js#L1-L53)
+- [botManager.js:1-190](file://botManager.js#L1-L190)
 - [apiRouter.js:1-19](file://apiRouter.js#L1-L19)
 - [services/datajud.js:1-32](file://services/datajud.js#L1-L32)
 - [services/premium.js:1-12](file://services/premium.js#L1-L12)
 - [database.sql:1-25](file://database.sql#L1-L25)
 - [render-setup.sql:1-37](file://render-setup.sql#L1-L37)
+- [render.yaml:1-31](file://render.yaml#L1-L31)
 
 **Section sources**
 - [README.md:1-56](file://README.md#L1-L56)
@@ -119,11 +125,11 @@ JWT-based authentication with role-based access control. Password hashing ensure
 Telegram bot orchestration with automatic startup for existing users and message processing for process queries.
 
 **Section sources**
-- [server.js:1-326](file://server.js#L1-L326)
-- [worker.js:1-70](file://worker.js#L1-L70)
-- [db.js:1-11](file://db.js#L1-L11)
+- [server.js:1-366](file://server.js#L1-L366)
+- [worker.js:1-74](file://worker.js#L1-L74)
+- [db.js:1-19](file://db.js#L1-L19)
 - [auth.js:1-59](file://auth.js#L1-L59)
-- [botManager.js:1-53](file://botManager.js#L1-L53)
+- [botManager.js:1-190](file://botManager.js#L1-L190)
 
 ## Architecture Overview
 The system operates on a client-server model with background processing:
@@ -155,8 +161,8 @@ Telegram-->>Worker : Delivery Confirmation
 ```
 
 **Diagram sources**
-- [server.js:25-91](file://server.js#L25-L91)
-- [worker.js:17-61](file://worker.js#L17-L61)
+- [server.js:25-101](file://server.js#L25-L101)
+- [worker.js:17-65](file://worker.js#L17-L65)
 - [apiRouter.js:4-16](file://apiRouter.js#L4-L16)
 - [services/datajud.js:3-29](file://services/datajud.js#L3-L29)
 
@@ -192,12 +198,12 @@ USUARIOS ||--o{ PROCESSOS : "monitors"
 
 **Diagram sources**
 - [database.sql:5-24](file://database.sql#L5-L24)
-- [server.js:254-302](file://server.js#L254-L302)
+- [server.js:283-346](file://server.js#L283-L346)
 
 **Section sources**
 - [database.sql:1-25](file://database.sql#L1-L25)
-- [render-setup.sql:6-25](file://render-setup.sql#L6-L25)
-- [server.js:254-302](file://server.js#L254-L302)
+- [render-setup.sql:6-37](file://render-setup.sql#L6-L37)
+- [server.js:283-346](file://server.js#L283-L346)
 
 ### Authentication Flow
 The authentication system implements JWT-based session management with role verification:
@@ -244,10 +250,10 @@ SendDetails --> End
 ```
 
 **Diagram sources**
-- [botManager.js:13-39](file://botManager.js#L13-L39)
+- [botManager.js:91-167](file://botManager.js#L91-L167)
 
 **Section sources**
-- [botManager.js:1-53](file://botManager.js#L1-L53)
+- [botManager.js:1-190](file://botManager.js#L1-L190)
 
 ## Environment Setup
 
@@ -275,6 +281,7 @@ Configure the following environment variables for production:
 - `DB_NAME`: Database name
 - `DB_USER`: Database username
 - `DB_PASSWORD`: Database password
+- `DATABASE_URL`: Alternative connection string format for Render platform
 
 **Application Configuration**:
 - `PORT`: Server listening port (default: 3000)
@@ -283,10 +290,16 @@ Configure the following environment variables for production:
 **Telegram Integration**:
 - `TELEGRAM_BOT_TOKEN`: Default bot token for system operations
 
+**API Keys**:
+- `ESC_AVADOR_API_KEY`: Escavador API key for premium searches
+- `JUSBRASIL_API_KEY`: JusBrasil API key for premium searches
+- `DATAAJUD_API_KEY`: DataJud API key for free searches
+
 **Section sources**
-- [db.js:4-10](file://db.js#L4-L10)
+- [db.js:4-16](file://db.js#L4-L16)
 - [auth.js:5](file://auth.js#L5)
-- [server.js:243-248](file://server.js#L243-L248)
+- [server.js:275-280](file://server.js#L275-L280)
+- [render.yaml:14-25](file://render.yaml#L14-L25)
 
 ## Production Deployment Strategies
 
@@ -341,12 +354,27 @@ Implement horizontal scaling with load balancing:
 
 **Section sources**
 - [package.json:5-10](file://package.json#L5-L10)
-- [server.js:243-248](file://server.js#L243-L248)
+- [server.js:275-280](file://server.js#L275-L280)
 
 ## Platform-Specific Deployment
 
 ### Render Platform Deployment
 The application now includes specialized deployment procedures for the Render platform, streamlining cloud deployment:
+
+#### Render Configuration File
+The `render.yaml` file provides comprehensive deployment configuration for Render's platform-as-a-service:
+
+**Service Configuration**:
+- Node.js web service with automatic scaling
+- Starter plan for cost-effective 24/7 operation
+- Integrated PostgreSQL database management
+- Environment variable management with automatic generation
+
+**Key Features**:
+- Automatic database connection string generation
+- API key management with manual configuration option
+- JWT secret generation for enhanced security
+- Build and start command automation
 
 #### Render Setup Script
 The `render-setup.sql` script provides a comprehensive setup procedure specifically designed for Render's PostgreSQL environment:
@@ -373,9 +401,13 @@ The `render-setup.sql` script provides a comprehensive setup procedure specifica
 
 **Step 2: Environment Configuration**
 1. Set up environment variables in Render:
-   - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
-   - `JWT_SECRET` (random secure key)
-   - `TELEGRAM_BOT_TOKEN` (your Telegram bot token)
+   - `NODE_ENV`: production
+   - `PORT`: 3000
+   - `DATABASE_URL`: Automatically generated by Render
+   - `JWT_SECRET`: Generated automatically
+   - `ESC_AVADOR_API_KEY`: Manual configuration required
+   - `JUSBRASIL_API_KEY`: Manual configuration required
+   - `DATAAJUD_API_KEY`: Manual configuration required
 2. Configure build settings:
    - Build command: `npm install`
    - Start command: `npm start`
@@ -401,8 +433,9 @@ The `render-setup.sql` script provides a comprehensive setup procedure specifica
 - **Git Integration**: One-click deployments from GitHub repositories
 
 **Section sources**
+- [render.yaml:1-31](file://render.yaml#L1-L31)
 - [render-setup.sql:1-37](file://render-setup.sql#L1-L37)
-- [server.js:250-325](file://server.js#L250-L325)
+- [server.js:275-366](file://server.js#L275-L366)
 
 ### Traditional PostgreSQL Deployment
 For environments without Render's managed services:
@@ -470,7 +503,7 @@ Handle multiple monitoring loops:
 
 **Section sources**
 - [worker.js:6-15](file://worker.js#L6-L15)
-- [worker.js:17-61](file://worker.js#L17-L61)
+- [worker.js:17-65](file://worker.js#L17-L65)
 - [botManager.js:5](file://botManager.js#L5)
 
 ## Monitoring and Maintenance
@@ -536,8 +569,8 @@ Regular maintenance tasks:
 - Cache invalidation strategies
 
 **Section sources**
-- [server.js:243-248](file://server.js#L243-L248)
-- [worker.js:17-61](file://worker.js#L17-L61)
+- [server.js:275-280](file://server.js#L275-L280)
+- [worker.js:17-65](file://worker.js#L17-L65)
 
 ## Backup and Disaster Recovery
 
@@ -587,7 +620,7 @@ Comprehensive recovery procedures:
 
 **Section sources**
 - [database.sql:1-25](file://database.sql#L1-L25)
-- [db.js:4-10](file://db.js#L4-L10)
+- [db.js:4-16](file://db.js#L4-L16)
 
 ## Security Hardening
 
@@ -644,8 +677,8 @@ Protect deployment infrastructure:
 
 **Section sources**
 - [auth.js:51-58](file://auth.js#L51-L58)
-- [db.js:4-10](file://db.js#L4-L10)
-- [server.js:25-91](file://server.js#L25-L91)
+- [db.js:4-16](file://db.js#L4-L16)
+- [server.js:25-101](file://server.js#L25-L101)
 
 ## Troubleshooting Guide
 
@@ -703,13 +736,13 @@ Essential commands for troubleshooting:
 - Load balancer health checks
 
 **Section sources**
-- [server.js:243-326](file://server.js#L243-L326)
-- [worker.js:17-61](file://worker.js#L17-L61)
+- [server.js:275-366](file://server.js#L275-L366)
+- [worker.js:17-65](file://worker.js#L17-L65)
 - [auth.js:17-31](file://auth.js#L17-L31)
 
 ## Conclusion
 This deployment guide provides a comprehensive framework for operating the Judicial Process Monitoring SaaS application in production. The recent addition of Render platform deployment capabilities significantly simplifies cloud deployment while maintaining the robustness of the original architecture. By following the outlined strategies for containerization, process management, scaling, monitoring, and security hardening, you can achieve reliable, scalable, and maintainable operations.
 
-The specialized `render-setup.sql` script eliminates much of the complexity traditionally associated with PostgreSQL setup, while the enhanced environment configuration ensures seamless operation across different deployment platforms. The modular architecture supports gradual scaling while maintaining system stability, and the comprehensive monitoring approach enables proactive issue resolution.
+The specialized `render-setup.sql` script and `render.yaml` configuration eliminate much of the complexity traditionally associated with PostgreSQL setup and deployment management, while the enhanced environment configuration ensures seamless operation across different deployment platforms. The modular architecture supports gradual scaling while maintaining system stability, and the comprehensive monitoring approach enables proactive issue resolution.
 
 Regular maintenance, backup procedures, and security hardening practices ensure long-term operational success, whether deploying to traditional infrastructure or leveraging modern cloud platforms like Render. The dual deployment strategy provides flexibility for different organizational requirements while maintaining consistent functionality and reliability.
