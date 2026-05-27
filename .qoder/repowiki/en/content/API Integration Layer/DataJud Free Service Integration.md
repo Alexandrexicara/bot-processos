@@ -18,12 +18,12 @@
 
 ## Update Summary
 **Changes Made**
-- Updated API key management section to reflect server-level environment variable configuration
-- Corrected endpoint URL formatting documentation to use official underscore format
-- Expanded tribunal coverage documentation to include TRF2, STJ, and TST
-- Updated OAB search optimization documentation to reflect state-level tribunal focus
-- Revised search algorithm documentation to remove wildcard query functionality
-- Enhanced error handling and retry mechanisms documentation
+- Complete removal of DataJud service integration documentation as it has been removed from the codebase
+- Updated architecture overview to reflect simplified single-service architecture using Escavador as the primary service
+- Removed all references to DataJud API key management, endpoint configuration, and tribunal coverage
+- Updated service orchestration to show Escavador as the sole free service provider
+- Revised troubleshooting guide to remove DataJud-specific error scenarios
+- Updated all diagrams and code examples to reflect the current architecture
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -38,15 +38,15 @@
 10. [Appendices](#appendices)
 
 ## Introduction
-This document explains the free DataJud (CNJ) integration within the judicial process monitoring system. It covers the API service architecture, request formatting, response parsing, endpoint configuration, error handling, timeouts, retries, and usage constraints for the free tier. It also documents fallback mechanisms to a paid service, monitoring and alerting via Telegram, and operational guidance for reliability and performance.
+This document explains the current judicial process monitoring system architecture. The system has been simplified to use a single primary service provider (Escavador) as the foundation for all free lookups, with optional paid service integration for enhanced functionality. The previous DataJud integration has been completely removed from the codebase, resulting in a streamlined architecture focused on Escavador as the core service provider.
 
-**Updated** Enhanced API key management now uses server-level environment variables for improved security and centralized configuration.
+**Important**: The DataJud service integration described in this document has been completely removed from the codebase. The current architecture uses only Escavador as the primary service provider.
 
 ## Project Structure
-The system is organized around a Node.js backend with Express, PostgreSQL persistence, Telegram bot integrations, and two service modules:
-- Free service module for DataJud CNJ with enhanced API key management
-- Premium fallback service module
-- API router orchestrating free and premium lookups
+The system is organized around a Node.js backend with Express, PostgreSQL persistence, Telegram bot integrations, and service modules:
+- Primary service module using Escavador as the base provider
+- Optional paid service integration points for enhanced functionality
+- API router orchestrating service lookups
 - Telegram bot manager and worker for monitoring and notifications
 - Authentication, database connection, and schema
 
@@ -57,7 +57,7 @@ S["server.js"]
 R["apiRouter.js"]
 end
 subgraph "Services"
-D["services/datajud.js"]
+E["services/escavador.js"]
 P["services/premium.js"]
 end
 subgraph "Telegram Integration"
@@ -76,26 +76,21 @@ AX["axios"]
 PG["pg"]
 JWT["jsonwebtoken"]
 TG["node-telegram-bot-api"]
-ENDPT["Official CNJ Endpoints"]
-ENDPT2["TRIBUNAIS Coverage"]
-ENDPT3["TRIBUNAIS_OAB Optimization"]
-ENDPT4["Enhanced API Key Management"]
-ENDPT5["Rate Limiting & Retry Logic"]
+ESC["Escavador API Integration"]
+PAY["Optional Paid Services"]
+ENDPT["Single Service Architecture"]
 end
 S --> R
-R --> D
+R --> E
 R --> P
 BM --> R
 W --> R
 S --> DB
 DB --> PG
 S --> A
-D --> AX
-D --> ENDPT
-D --> ENDPT2
-D --> ENDPT3
-D --> ENDPT4
-D --> ENDPT5
+E --> AX
+E --> ESC
+P --> PAY
 BM --> TG
 W --> TG
 SCHEMA --> DB
@@ -103,12 +98,12 @@ SCHEMA --> DB
 
 **Diagram sources**
 - [server.js:1-162](file://server.js#L1-L162)
-- [apiRouter.js:1-19](file://apiRouter.js#L1-L19)
-- [datajud.js:1-32](file://services/datajud.js#L1-L32)
+- [apiRouter.js:1-49](file://apiRouter.js#L1-L49)
+- [escavador.js:1-218](file://services/escavador.js#L1-L218)
 - [premium.js:1-12](file://services/premium.js#L1-L12)
-- [botManager.js:1-53](file://botManager.js#L1-L53)
-- [worker.js:1-70](file://worker.js#L1-L70)
-- [db.js:1-11](file://db.js#L1-L11)
+- [botManager.js:1-221](file://botManager.js#L1-L221)
+- [worker.js:1-74](file://worker.js#L1-L74)
+- [db.js:1-19](file://db.js#L1-L19)
 - [database.sql:1-25](file://database.sql#L1-L25)
 - [auth.js:1-59](file://auth.js#L1-L59)
 - [package.json:1-21](file://package.json#L1-L21)
@@ -118,199 +113,172 @@ SCHEMA --> DB
 - [package.json:1-21](file://package.json#L1-L21)
 
 ## Core Components
-- Free DataJud service: Performs a POST search against the CNJ public API endpoint with enhanced server-level API key management and optimized tribunal coverage.
-- Premium fallback service: Placeholder for a paid provider; returns a standardized response shape.
-- API router: Attempts free lookup first, then falls back to premium if configured.
-- Telegram bot manager: Processes user messages, triggers lookups, and persists results.
-- Worker: Periodically checks for updates and notifies users via Telegram.
-- Authentication and persistence: JWT-based auth, PostgreSQL storage for users and monitored processes.
+- **Primary Escavador service**: Performs comprehensive legal database searches using the Escavador API with support for process numbers, OAB searches, CPF/CNPJ lookups, and text-based searches.
+- **Optional paid services**: Placeholder implementations for additional service providers that can be integrated when users configure their own API keys.
+- **API router**: Orchestrates service lookups with Escavador as the primary provider and optional paid services as fallbacks.
+- **Telegram bot manager**: Processes user messages, triggers lookups, and persists results with enhanced error handling.
+- **Worker**: Periodically checks for updates and notifies users via Telegram.
+- **Authentication and persistence**: JWT-based auth, PostgreSQL storage for users and monitored processes.
 
-**Updated** Enhanced API key management now uses server-level environment variables for centralized configuration and improved security.
+**Important**: The system now uses a simplified architecture with Escavador as the sole primary service provider, replacing the previous multi-service approach that included DataJud.
 
 **Section sources**
-- [datajud.js:1-32](file://services/datajud.js#L1-L32)
+- [escavador.js:1-218](file://services/escavador.js#L1-L218)
 - [premium.js:1-12](file://services/premium.js#L1-L12)
-- [apiRouter.js:1-19](file://apiRouter.js#L1-L19)
-- [botManager.js:1-53](file://botManager.js#L1-L53)
-- [worker.js:1-70](file://worker.js#L1-L70)
+- [apiRouter.js:1-49](file://apiRouter.js#L1-L49)
+- [botManager.js:1-221](file://botManager.js#L1-L221)
+- [worker.js:1-74](file://worker.js#L1-L74)
 - [auth.js:1-59](file://auth.js#L1-L59)
-- [db.js:1-11](file://db.js#L1-L11)
+- [db.js:1-19](file://db.js#L1-L19)
 - [database.sql:18-25](file://database.sql#L18-L25)
 
 ## Architecture Overview
-The system integrates Telegram users with a two-tier lookup pipeline featuring enhanced API key management and optimized tribunal coverage:
-- Free tier: DataJud CNJ public API with server-level API key management
-- Paid fallback: Premium provider (placeholder)
+The system has been simplified to use a single-service architecture with Escavador as the primary provider:
+- **Primary service**: Escavador API with comprehensive search capabilities
+- **Optional paid services**: Additional providers that users can configure individually
+- **Service orchestration**: Single-point lookup with Escavador as the base provider
 
 ```mermaid
 sequenceDiagram
 participant U as "Telegram User"
 participant BM as "botManager.js"
 participant R as "apiRouter.js"
-participant D as "datajud.js"
+participant E as "escavador.js"
 participant P as "premium.js"
 participant DB as "PostgreSQL"
 U->>BM : "Send process number"
-BM->>R : "consultarProcesso(numero, user)"
-R->>D : "consultarDataJud(numero) with server API key"
-alt "Free lookup succeeds"
-D-->>R : "free result with enhanced tribunal coverage"
-R-->>BM : "free result"
+BM->>R : "consultarProcesso(query, user)"
+R->>E : "consultarEscavador(query)"
+alt "Escavador returns results"
+E-->>R : "primary results from Escavador"
+R-->>BM : "formatted results"
 BM->>DB : "Insert process record"
 BM-->>U : "Send formatted message"
-else "Free lookup fails"
-R->>P : "consultarPremium(numero, apiKey)"
-P-->>R : "premium result"
-R-->>BM : "premium result"
+else "Escavador fails or empty"
+R->>P : "buscarPagas(query) - optional paid services"
+P-->>R : "paid results (if configured)"
+R-->>BM : "paid results (if available)"
 BM->>DB : "Insert process record"
 BM-->>U : "Send formatted message"
 end
 ```
 
 **Diagram sources**
-- [botManager.js:13-39](file://botManager.js#L13-L39)
-- [apiRouter.js:4-16](file://apiRouter.js#L4-L16)
-- [datajud.js:3-29](file://services/datajud.js#L3-L29)
-- [premium.js:1-9](file://services/premium.js#L1-L9)
+- [botManager.js:122-198](file://botManager.js#L122-L198)
+- [apiRouter.js:8-31](file://apiRouter.js#L8-L31)
+- [escavador.js:10-40](file://services/escavador.js#L10-L40)
+- [premium.js:1-12](file://services/premium.js#L1-12)
 - [database.sql:18-24](file://database.sql#L18-L24)
 
 ## Detailed Component Analysis
 
-### DataJud Free Service
-- **Enhanced API Key Management**: Uses server-level API key from environment variables (`DATAJUD_API_KEY`) for centralized configuration and improved security.
-- **Endpoint Configuration**: Correctly formatted using official CNJ underscore format: `api_publica_{tribunal}/_search`.
-- **Expanded Tribunal Coverage**: Now includes TRF2, STJ, and TST alongside state-level tribunais.
-- **Optimized OAB Searches**: Focuses on state-level tribunais only (TRIBUNAIS_OAB array) for faster and more reliable results.
-- **Request Body**: Elasticsearch-like match query targeting the process number field.
-- **Response Parsing**: Extracts the first hit's source fields and returns a normalized object with number, tribunal, class, and last update timestamp.
-- **Error Handling**: Enhanced with retry logic for rate limits and server errors, plus silent 401 handling for unauthorized requests.
+### Escavador Primary Service
+- **Comprehensive Search Capabilities**: Supports process number searches, OAB searches, CPF/CNPJ lookups, and text-based searches through a unified interface.
+- **Dual API Version Support**: Automatically tries Escavador API v1 first (for richer data) and falls back to v2 if needed.
+- **Robust Error Handling**: Comprehensive error handling with detailed logging and graceful degradation.
+- **Timeout Management**: Configured timeouts for different API endpoints to prevent hanging requests.
+- **Result Normalization**: Converts diverse API responses into a standardized format for consistent processing.
 
-**Updated** Enhanced API key management now uses server-level environment variables for centralized configuration and improved security.
-
-**Updated** Endpoint URL formatting now uses official underscore format as per CNJ documentation.
-
-**Updated** Expanded tribunal coverage includes TRF2, STJ, and TST for comprehensive legal database access.
-
-**Updated** Optimized OAB searches focus on state-level tribunais only for improved performance and accuracy.
-
-```mermaid
-flowchart TD
-Start(["consultarDataJud Entry"]) --> ServerKey["Load server API key from env"]
-ServerKey --> TribunalLoop["Iterate through expanded tribunal list"]
-TribunalLoop --> BuildURL["Build official underscore endpoint format"]
-BuildURL --> Post["POST to DataJud endpoint<br/>with match query"]
-Post --> Resp{"Response OK?"}
-Resp --> |No| RetryCheck{"Rate limit or server error?"}
-RetryCheck --> |Yes| Retry["Apply exponential backoff retry"]
-Retry --> Post
-RetryCheck --> |No| ReturnNull["Return null"]
-Resp --> |Yes| ParseHits["Parse hits.hits[0]"]
-ParseHits --> HasHit{"Has hit?"}
-HasHit --> |No| TribunalLoop
-HasHit --> |Yes| MapFields["Map _source fields to normalized shape"]
-MapFields --> ReturnObj["Return {numero, tribunal, classe, data}"]
-```
-
-**Diagram sources**
-- [datajud.js:3-29](file://services/datajud.js#L3-L29)
-- [datajud.js:10-30](file://services/datajud.js#L10-L30)
-- [datajud.js:32-33](file://services/datajud.js#L32-L33)
-- [datajud.js:48-51](file://services/datajud.js#L48-L51)
+**Important**: This replaces the previous DataJud integration with a more comprehensive and reliable service provider.
 
 **Section sources**
-- [datajud.js:3-29](file://services/datajud.js#L3-L29)
-- [datajud.js:10-30](file://services/datajud.js#L10-L30)
-- [datajud.js:32-33](file://services/datajud.js#L32-L33)
-- [datajud.js:48-51](file://services/datajud.js#L48-L51)
+- [escavador.js:10-40](file://services/escavador.js#L10-L40)
+- [escavador.js:84-170](file://services/escavador.js#L84-L170)
+- [escavador.js:173-211](file://services/escavador.js#L173-L211)
 
 ### API Router Orchestration
-- Attempts free lookup first using enhanced DataJud service with server-level API key.
-- Falls back to premium only if the user has an API key and mode is not set to free.
-- **Enhanced OAB Strategy**: Prioritizes Jusbrasil, then Escavador (server-level), then DataJud for OAB queries.
-- Returns null when both attempts fail.
+- **Simplified Lookup Flow**: Uses Escavador as the primary service provider with optional paid services as fallbacks.
+- **User Mode Handling**: Respects user configuration for gratis, hybrid, or paid modes.
+- **Service Priority**: Escavador first, then optional paid services if configured.
+- **Error Propagation**: Maintains consistent error handling across all service providers.
 
-**Updated** Enhanced OAB strategy now prioritizes server-level Escavador service for better OAB search results.
+**Important**: The architecture has been simplified to use a single primary service provider, removing the complexity of managing multiple service integrations.
 
 ```mermaid
 flowchart TD
-A["consultarProcesso(numero, user)"] --> TryFree["Call consultarDataJud(numero)<br/>with server API key"]
-TryFree --> FreeOk{"Free result?"}
-FreeOk --> |Yes| ReturnFree["Return free result"]
-FreeOk --> |No| CheckMode{"user.api_key and user.modo !== 'gratis'?"}
-CheckMode --> |Yes| CallPremium["Call consultarPremium(numero, api_key)"]
-CallPremium --> ReturnPremium["Return premium result"]
-CheckMode --> |No| ReturnNull["Return null"]
+A["consultarProcesso(query, user)"] --> CheckMode["Check user mode (gratis/hybrid/paid)"]
+CheckMode --> TryEscavador["Call consultarEscavador(query)"]
+TryEscavador --> EscavadorOk{"Escavador results?"}
+EscavadorOk --> |Yes| ReturnEscavador["Return Escavador results"]
+EscavadorOk --> |No| CheckPaid{"Mode allows paid services?"}
+CheckPaid --> |Yes| TryPaid["Call buscarPagas(query)"]
+TryPaid --> PaidOk{"Paid results?"}
+PaidOk --> |Yes| ReturnPaid["Return paid results"]
+PaidOk --> |No| ReturnNull["Return null"]
+CheckPaid --> |No| ReturnNull
 ```
 
 **Diagram sources**
-- [apiRouter.js:4-16](file://apiRouter.js#L4-L16)
+- [apiRouter.js:8-31](file://apiRouter.js#L8-L31)
+- [apiRouter.js:33-46](file://apiRouter.js#L33-L46)
 
 **Section sources**
-- [apiRouter.js:4-16](file://apiRouter.js#L4-L16)
+- [apiRouter.js:8-31](file://apiRouter.js#L8-L31)
+- [apiRouter.js:33-46](file://apiRouter.js#L33-L46)
 
 ### Premium Fallback Service
-- Placeholder implementation returns a standardized object with tribunal, class, and timestamp.
-- In a production scenario, integrate with a real provider and propagate errors appropriately.
+- **Placeholder Implementation**: Maintains the same interface as the previous DataJud service but serves as a template for integrating additional paid providers.
+- **Standardized Interface**: Returns results in the same normalized format as other service providers.
+- **Extensible Design**: Easy to replace with actual paid service implementations.
 
 **Section sources**
 - [premium.js:1-12](file://services/premium.js#L1-L12)
 
 ### Telegram Bot Manager
-- Initializes Telegram bots per user and listens for messages containing process numbers.
-- Invokes the API router, persists results, and sends formatted messages to users.
-- Uses cached bot instances to avoid recreation.
-- **Enhanced OAB Handling**: Improved error messages for OAB searches indicating server-level Escavador dependency.
+- **Enhanced Error Messages**: Provides clear feedback when Escavador API key is not configured for OAB searches.
+- **Improved User Experience**: Better handling of various search types with appropriate error messages.
+- **Consistent Result Formatting**: Unified message formatting regardless of the underlying service provider.
 
-**Updated** Enhanced OAB handling now provides clearer error messages about server-level Escavador dependency.
+**Important**: Error messages now specifically reference Escavador API key requirements for OAB functionality.
 
 **Section sources**
-- [botManager.js:7-42](file://botManager.js#L7-L42)
+- [botManager.js:122-198](file://botManager.js#L122-L198)
+- [botManager.js:142-150](file://botManager.js#L142-L150)
 
 ### Worker Monitoring
-- Runs periodically (every 5 minutes) to check for process updates.
-- Retrieves user configurations, invokes the API router, compares timestamps, and sends Telegram notifications when changes occur.
-- Caches user records to reduce repeated database queries.
+- **Simplified Monitoring**: Works with the single-service architecture, checking for process updates using Escavador as the primary provider.
+- **Efficient Caching**: Improved caching strategies for user data and service responses.
+- **Reliable Notifications**: Consistent notification delivery regardless of service provider changes.
 
 **Section sources**
-- [worker.js:17-67](file://worker.js#L17-L67)
+- [worker.js:17-74](file://worker.js#L17-L74)
 
 ### Authentication and Authorization
-- JWT-based authentication middleware verifies tokens and attaches user context.
-- Admin middleware restricts administrative endpoints.
-- Password hashing and verification use bcrypt.
+- **JWT-based Authentication**: Maintains the same authentication mechanism with token-based access control.
+- **Role-based Access**: Admin and user role differentiation remains unchanged.
+- **Password Security**: Enhanced password hashing and verification using bcrypt.
 
 **Section sources**
-- [auth.js:8-31](file://auth.js#L8-L31)
-- [auth.js:34-49](file://auth.js#L34-L49)
+- [auth.js:1-59](file://auth.js#L1-L59)
 
 ### Database Schema and Persistence
-- Users table stores credentials, Telegram identifiers, API keys, and mode (gratis, hybrid, paid).
-- Processes table tracks monitored numbers, associated users, last known status, and timestamps.
-- Database connection configured via environment variables.
+- **User Configuration**: Stores user preferences, API keys, and mode settings for service integration.
+- **Process Tracking**: Maintains monitored process records with status tracking.
+- **Connection Management**: Supports both local development and cloud deployment configurations.
 
 **Section sources**
 - [database.sql:5-24](file://database.sql#L5-L24)
-- [db.js:4-10](file://db.js#L4-L10)
+- [db.js:1-19](file://db.js#L1-L19)
 
 ## Dependency Analysis
 External libraries and their roles:
-- axios: HTTP client for the DataJud endpoint with enhanced timeout configuration.
-- pg: PostgreSQL client for database connectivity.
-- jsonwebtoken: JWT signing and verification for authentication.
-- node-telegram-bot-api: Telegram bot integration for messaging and notifications.
-- bcryptjs: Password hashing and verification.
-- dotenv: Environment variable loading for server-level configuration.
+- **axios**: HTTP client for Escavador API with comprehensive timeout configuration.
+- **pg**: PostgreSQL client for database connectivity with cloud deployment support.
+- **jsonwebtoken**: JWT signing and verification for authentication.
+- **node-telegram-bot-api**: Telegram bot integration for messaging and notifications.
+- **bcryptjs**: Password hashing and verification for secure authentication.
+- **dotenv**: Environment variable loading for service configuration.
 
-**Updated** Enhanced dependency analysis reflects server-level API key management and improved error handling.
+**Important**: The dependency structure has been simplified with Escavador as the primary external service integration.
 
 ```mermaid
 graph LR
-AX["axios"] --> D["services/datajud.js"]
+AX["axios"] --> E["services/escavador.js"]
 PG["pg"] --> DB["db.js"]
 JWT["jsonwebtoken"] --> A["auth.js"]
 TG["node-telegram-bot-api"] --> BM["botManager.js"]
 TG --> W["worker.js"]
-D --> R["apiRouter.js"]
+E --> R["apiRouter.js"]
 P["services/premium.js"] --> R
 R --> BM
 R --> W
@@ -318,13 +286,13 @@ DB --> S["server.js"]
 A --> S
 BM --> S
 W --> S
-ENV["dotenv"] --> D
+ENV["dotenv"] --> E
 ENV --> S
 ```
 
 **Diagram sources**
 - [package.json:11-19](file://package.json#L11-L19)
-- [datajud.js:1](file://services/datajud.js#L1)
+- [escavador.js:1](file://services/escavador.js#L1)
 - [db.js:1](file://db.js#L1)
 - [auth.js:1](file://auth.js#L1)
 - [botManager.js:1](file://botManager.js#L1)
@@ -335,142 +303,142 @@ ENV --> S
 - [package.json:11-19](file://package.json#L11-L19)
 
 ## Performance Considerations
-- **Network Latency**: The DataJud endpoint is external; enhanced with timeouts and retry logic at the HTTP client level.
-- **Concurrency**: The Telegram bot manager and worker operate independently; ensure database connections are pooled efficiently.
-- **Caching**: The worker caches user records to minimize repeated queries; consider caching successful free lookups to reduce external calls.
-- **Rate Limiting**: Enhanced rate limiting with configurable delays and exponential backoff for transient failures.
-- **Tribunal Coverage**: Optimized tribunal selection reduces unnecessary API calls and improves response times.
-- **Batch Processing**: Group process checks by user in the worker to reduce redundant lookups.
+- **Network Latency**: Escavador API performance varies by region and load; implement appropriate timeout and retry strategies.
+- **Service Degradation**: The simplified architecture reduces complexity but requires robust error handling for single points of failure.
+- **Caching Strategies**: Enhanced caching of user data and service responses to reduce API calls.
+- **Timeout Management**: Configured timeouts for different Escavador endpoints to prevent hanging requests.
+- **Concurrent Operations**: Improved handling of concurrent user requests with better resource management.
+- **Resource Optimization**: Reduced memory footprint by eliminating DataJud-specific code and dependencies.
 
-**Updated** Enhanced performance considerations now include optimized tribunal coverage and improved rate limiting strategies.
+**Important**: Performance improvements come from reduced architectural complexity and more efficient service integration.
 
 ## Troubleshooting Guide
 Common issues and remedies:
-- **Free lookup returns null**:
-  - Verify the process number format and that the CNJ endpoint is reachable.
-  - Confirm the DataJud service is responding and returning hits.
-  - Check network connectivity and firewall rules.
-  - **Updated** Verify server-level API key configuration in environment variables.
-- **Premium fallback not triggered**:
-  - Ensure the user has an API key and mode is not set to free.
-  - Validate the premium service implementation and error propagation.
-- **Telegram notifications not sent**:
+- **Escavador API Key Issues**:
+  - Verify ESCAVADOR_API_KEY environment variable is properly configured.
+  - Check API key validity and service availability through Escavador's status page.
+  - Monitor API rate limits and adjust request frequency accordingly.
+- **Search Results Not Found**:
+  - Verify process number format follows CNJ standards (20 digits).
+  - Check if the process exists in Escavador's database.
+  - Try alternative search methods (OAB, CPF, or text search).
+- **Telegram Notifications Not Sent**:
   - Confirm bot token and Telegram ID are configured for the user.
   - Verify the worker is running and has access to the database.
-- **Authentication failures**:
+  - Check Telegram bot availability and user privacy settings.
+- **Authentication Failures**:
   - Ensure JWT secret is configured and tokens are valid.
   - Check that clients send Authorization headers with bearer tokens.
-- **OAB search limitations**:
-  - **Updated** OAB searches primarily rely on server-level Escavador service.
-  - Configure ESCAVADOR_API_KEY environment variable for enhanced OAB functionality.
-  - **Updated** OAB searches are optimized for state-level tribunais only.
+- **Paid Service Integration**:
+  - Configure API keys for desired paid services in user settings.
+  - Verify service availability and proper configuration before use.
 
-**Updated** Added troubleshooting guidance for server-level API key configuration and OAB search limitations.
+**Important**: Troubleshooting has been updated to focus on Escavador API integration and user-configured paid services.
 
 **Section sources**
-- [apiRouter.js:11-13](file://apiRouter.js#L11-L13)
-- [botManager.js:17-39](file://botManager.js#L17-L39)
-- [worker.js:28-59](file://worker.js#L28-L59)
+- [apiRouter.js:15-31](file://apiRouter.js#L15-L31)
+- [botManager.js:142-150](file://botManager.js#L142-L150)
+- [worker.js:45-64](file://worker.js#L45-L64)
 - [auth.js:17-31](file://auth.js#L17-L31)
 
 ## Conclusion
-The free DataJud integration provides a streamlined lookup mechanism with enhanced server-level API key management, optimized tribunal coverage, and improved error handling. The system's modular design enables easy extension and maintenance. For production, consider adding robust timeout and retry policies, rate-limit awareness, and improved error reporting to enhance reliability and user experience.
+The system has been successfully simplified to use a single-service architecture with Escavador as the primary provider. This change eliminates the complexity of managing multiple service integrations while maintaining comprehensive legal database access capabilities. The previous DataJud integration has been completely removed, resulting in a more maintainable and efficient codebase. Users can still achieve the same functionality through Escavador's comprehensive API, with optional paid services available for enhanced features.
 
-**Updated** Enhanced conclusion reflects improved API key management, expanded tribunal coverage, and optimized search algorithms.
+**Important**: The conclusion reflects the successful migration from a multi-service architecture to a simplified single-service approach.
 
 ## Appendices
 
 ### API Service Architecture and Endpoints
-- **Enhanced API Key Management**: Server-level API key from environment variables (`DATAJUD_API_KEY`) for centralized configuration.
-- **Official Endpoint Format**: POST to CNJ public search endpoint using underscore format: `api_publica_{tribunal}/_search`.
-- **Expanded Tribunal Coverage**: Includes TRF2, STJ, and TST alongside state-level tribunais for comprehensive legal database access.
-- **Optimized OAB Searches**: Focuses on state-level tribunais only (TRIBUNAIS_OAB array) for improved performance.
-- **Response Normalization**: Returns a compact object with number, tribunal, class, and last update timestamp.
-- **Fallback**: If free lookup fails and user has a premium API key and mode allows, the system attempts the premium provider.
+- **Primary Service Provider**: Escavador API as the foundation for all free lookups.
+- **Unified Search Interface**: Single endpoint handles process numbers, OAB searches, CPF/CNPJ, and text-based searches.
+- **Dual API Version Support**: Automatic fallback between Escavador API v1 and v2 for optimal results.
+- **Standardized Response Format**: Consistent result structure across all search types.
+- **Optional Paid Services**: Extensible framework for integrating additional paid providers.
 
-**Updated** Enhanced API service architecture documentation reflects server-level API key management and expanded tribunal coverage.
+**Important**: The architecture now centers around Escavador as the primary service provider.
 
 **Section sources**
-- [datajud.js:5-12](file://services/datajud.js#L5-L12)
-- [datajud.js:19-24](file://services/datajud.js#L19-L24)
-- [datajud.js:10-30](file://services/datajud.js#L10-L30)
-- [datajud.js:32-33](file://services/datajud.js#L32-L33)
-- [apiRouter.js:11-13](file://apiRouter.js#L11-L13)
+- [escavador.js:10-40](file://services/escavador.js#L10-L40)
+- [escavador.js:84-170](file://services/escavador.js#L84-L170)
+- [apiRouter.js:15-31](file://apiRouter.js#L15-L31)
 
 ### Request Formatting and Response Parsing
-- **Request Body**: Match query targeting the process number field.
-- **Response Parsing**: Extracts the first hit's source fields and maps them to a normalized shape.
-- **Enhanced Error Handling**: Catches exceptions, applies exponential backoff for rate limits, and returns null to signal failure.
-- **Rate Limiting**: Configurable delay between requests to respect CNJ API limits.
+- **Unified Query Interface**: Single query object supports multiple search types (process, OAB, CPF, CNPJ, text).
+- **Escavador API Integration**: Comprehensive support for all Escavador endpoints with automatic version detection.
+- **Standardized Response Format**: Consistent result structure with number, tribunal, class, and date fields.
+- **Error Handling**: Comprehensive error handling with detailed logging and graceful degradation.
+- **Timeout Management**: Configured timeouts for different API endpoints to prevent hanging requests.
 
-**Updated** Enhanced request formatting documentation reflects improved error handling and rate limiting strategies.
+**Important**: Response parsing now focuses exclusively on Escavador API formats and structures.
 
 **Section sources**
-- [datajud.js:7-12](file://services/datajud.js#L7-L12)
-- [datajud.js:14-24](file://services/datajud.js#L14-L24)
-- [datajud.js:26-28](file://services/datajud.js#L26-L28)
-- [datajud.js:35-46](file://services/datajud.js#L35-L46)
+- [escavador.js:10-40](file://services/escavador.js#L10-L40)
+- [escavador.js:84-170](file://services/escavador.js#L84-L170)
+- [escavador.js:173-211](file://services/escavador.js#L173-L211)
 
 ### Service Limitations, Rate Limits, and Usage Constraints
-- **Free Tier**: Limited to the CNJ public API with enhanced server-level API key management; availability and rate limits are governed by the external service.
-- **Mode Configuration**: Users can select gratis, hybrid, or paid modes; fallback occurs only when appropriate.
-- **Monitoring Cadence**: Worker runs every 5 minutes; adjust intervals based on usage and external service constraints.
-- **Enhanced Rate Limiting**: Configurable delay between requests to prevent API throttling.
+- **Escavador API Limits**: Subject to Escavador's rate limits and service availability.
+- **Mode Configuration**: Users can select gratis, hybrid, or paid modes; paid services are user-configured.
+- **Monitoring Cadence**: Worker runs every 5 minutes with improved caching strategies.
+- **Service Reliability**: Single-service architecture reduces complexity but requires robust error handling.
 
-**Updated** Enhanced service limitations documentation reflects improved rate limiting and server-level API key management.
+**Important**: Service limitations now apply specifically to Escavador API constraints and user-configured paid services.
 
 **Section sources**
 - [database.sql:13-14](file://database.sql#L13-L14)
-- [worker.js:64](file://worker.js#L64)
-- [datajud.js:35-46](file://services/datajud.js#L35-L46)
+- [worker.js:67-74](file://worker.js#L67-L74)
+- [escavador.js:54-55](file://services/escavador.js#L54-L55)
 
 ### Timeout Management and Retry Mechanisms
-- **Enhanced Behavior**: Explicit timeouts configured (30 seconds) and exponential backoff with jitter for transient failures (429 and 5xx errors).
-- **Rate Limiting**: Configurable delay between requests to respect CNJ API limits.
-- **Recommended Improvements**:
-  - Circuit breaker patterns for degraded endpoints.
-  - Enhanced logging for debugging retry attempts.
+- **Configured Timeouts**: Different timeout values for various Escavador endpoints (15-30 seconds).
+- **Error Recovery**: Comprehensive error handling with detailed logging for debugging.
+- **Service Degradation**: Graceful fallback to alternative search methods when primary service fails.
+- **Resource Management**: Efficient handling of concurrent requests with proper cleanup.
 
-**Updated** Enhanced timeout and retry mechanisms documentation reflects improved error handling and rate limiting strategies.
+**Important**: Timeout and retry mechanisms now focus on Escavador API integration and error recovery strategies.
 
 **Section sources**
-- [datajud.js:5-12](file://services/datajud.js#L5-L12)
-- [datajud.js:84-102](file://services/datajud.js#L84-L102)
+- [escavador.js:54-55](file://services/escavador.js#L54-L55)
+- [escavador.js:110-112](file://services/escavador.js#L110-L112)
+- [escavador.js:160-169](file://services/escavador.js#L160-L169)
 
 ### Service Availability Monitoring and Fallback Triggering
-- **Availability**: The worker monitors process updates and sends notifications upon changes.
-- **Enhanced Fallback Triggering**: Controlled by user mode and API key presence; premium fallback activates only when configured.
-- **OAB Strategy**: Prioritizes server-level Escavador service for better OAB search results.
+- **Availability Monitoring**: Worker monitors process updates using Escavador as the primary provider.
+- **Fallback Strategy**: Simplified fallback to paid services only when user has configured API keys.
+- **Error Reporting**: Enhanced error reporting for service failures and user feedback.
+- **Service Health Checks**: Regular monitoring of service availability and performance.
 
-**Updated** Enhanced fallback triggering documentation reflects improved OAB search strategy.
+**Important**: Fallback mechanisms now focus on user-configured paid services rather than multiple service providers.
 
 **Section sources**
-- [worker.js:45-59](file://worker.js#L45-L59)
-- [apiRouter.js:11-13](file://apiRouter.js#L11-L13)
+- [worker.js:45-64](file://worker.js#L45-L64)
+- [apiRouter.js:23-28](file://apiRouter.js#L23-L28)
 
 ### Practical Integration Patterns
-- **Telegram Message Flow**: User sends a process number; bot performs lookup and persists results.
+- **Telegram Message Flow**: User sends various query types; bot routes to Escavador for processing.
 - **Worker Loop**: Periodic checks compare last known status and notify users of changes.
-- **Database Persistence**: Both free and premium results are stored consistently.
-- **Enhanced OAB Integration**: Server-level Escavador service for improved OAB search capabilities.
+- **Database Persistence**: Consistent storage of results from Escavador API responses.
+- **User Configuration**: Flexible user settings for API keys and service preferences.
+- **Error Handling**: Comprehensive error handling with user-friendly messages.
 
-**Updated** Enhanced integration patterns documentation reflects improved OAB search capabilities and server-level service integration.
+**Important**: Integration patterns now center around Escavador API integration and user-configured service preferences.
 
 **Section sources**
-- [botManager.js:13-39](file://botManager.js#L13-L39)
-- [worker.js:17-67](file://worker.js#L17-L67)
+- [botManager.js:122-198](file://botManager.js#L122-L198)
+- [worker.js:17-74](file://worker.js#L17-L74)
 - [database.sql:18-24](file://database.sql#L18-L24)
 
 ### Environment Configuration
-- **Server-Level API Keys**: Configure `DATAJUD_API_KEY` environment variable for centralized API key management.
-- **Database Configuration**: Support for `DATABASE_URL` or individual connection variables.
-- **JWT Secret**: Configure `JWT_SECRET` environment variable for authentication.
+- **Escavador API Key**: Configure ESCAVADOR_API_KEY environment variable for primary service access.
+- **Database Configuration**: Support for DATABASE_URL or individual connection variables.
+- **JWT Secret**: Configure JWT_SECRET environment variable for authentication.
 - **Telegram Configuration**: Bot tokens and Telegram IDs stored per user for personalized notifications.
+- **Paid Service Keys**: Optional API keys for additional paid services configured by users.
 
-**Updated** Added environment configuration documentation reflecting server-level API key management.
+**Important**: Environment configuration now focuses on Escavador API integration and optional paid service keys.
 
 **Section sources**
-- [datajud.js:4](file://services/datajud.js#L4)
+- [escavador.js:3-7](file://services/escavador.js#L3-L7)
 - [db.js:5-16](file://db.js#L5-L16)
 - [auth.js:5](file://auth.js#L5)
-- [server.js:26-51](file://server.js#L26-L51)
+- [server.js:290-295](file://server.js#L290-L295)

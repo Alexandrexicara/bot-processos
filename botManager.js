@@ -18,21 +18,20 @@ async function iniciarBot(token, userId) {
     }
 
     const options = {};
-    if (BASE_URL) {
-        // Produção: webhook (sem conflitos 409)
-        options.webHook = { port: process.env.PORT || 3000 };
-    } else {
-        // Desenvolvimento local: polling
+    if (!BASE_URL) {
+        // Apenas local: polling
         options.polling = true;
     }
 
     const bot = new TelegramBot(token, options);
 
-    // Registra webhook se em produção
+    // Registra webhook se em produção (rota /webhook/:userId no server.js)
     if (BASE_URL) {
         const webhookUrl = `${BASE_URL}/webhook/${userId}`;
-        bot.setWebHook(webhookUrl);
+        await bot.setWebHook(webhookUrl);
         console.log(`[BotManager] 🌐 Webhook registrado: ${webhookUrl}`);
+    } else {
+        console.log(`[BotManager] 📡 Polling local ativo`);
     }
 
     // Comando /start
