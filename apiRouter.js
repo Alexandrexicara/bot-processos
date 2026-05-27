@@ -1,14 +1,8 @@
 const escavador = require('./services/escavador');
 
-// 🧩 APIs que o utilizador pode configurar com a sua própria chave
-// Cada serviço em /services exporta { nome, gratuito, consultar(query) }
-// Se a chave não estiver configurada, o serviço é pulado silenciosamente
-const servicosPagos = [
-    require('./services/jusbrasil'),
-    require('./services/datajud'),
-    require('./services/digesto'),
-    require('./services/custom'),
-];
+// Nenhum serviço extra do servidor — só Escavador como base principal
+// Cada utilizador pode adicionar as suas próprias APIs no painel
+const servicosPagos = [];
 
 // query = { tipo, uf, numero, texto, original } ou string
 async function consultarProcesso(query, user) {
@@ -26,11 +20,11 @@ async function consultarProcesso(query, user) {
         return esc;
     }
 
-    // 2. APIs do utilizador (se modo pago/híbrido e utilizador configurou chave própria)
+    // 2. APIs extra do utilizador (se modo pago/híbrido e tiver chave própria)
     if (modo === 'pago' || modo === 'hibrido') {
-        console.log('[apiRouter] ⚡ Tentando APIs configuradas pelo utilizador...');
-        const pago = await buscarPagas(q);
-        if (pago && pago.length > 0) return pago;
+        console.log('[apiRouter] ⚡ Tentando APIs extra do utilizador...');
+        const extra = await buscarPagas(q);
+        if (extra && extra.length > 0) return extra;
     }
 
     return null;

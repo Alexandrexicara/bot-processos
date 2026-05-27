@@ -2,7 +2,7 @@ const axios = require('axios');
 
 // API Key via variável de ambiente: ESCAVADOR_API_KEY
 const API_KEY = process.env.ESCAVADOR_API_KEY || '';
-const BASE = 'https://api.escavador.com/api/v2';
+const BASE = 'https://api.escavador.com/api/v1';
 
 console.log(`[Escavador] 🔑 API Key: ${API_KEY ? 'SIM ✅' : 'NÃO ❌ (OAB não funcionará)'}`);
 
@@ -40,7 +40,7 @@ async function consultar(query) {
 }
 
 // Busca processos vinculados a uma OAB
-// Endpoint: GET /api/v2/envolvido/processos?oab_estado=MS&oab_numero=3616
+// Endpoint: GET /api/v1/envolvido/processos?oab_estado=MS&oab_numero=3616
 async function consultarPorOAB(uf, numeroOAB) {
     console.log(`[Escavador] 🔍 Buscando processos da OAB ${uf}/${numeroOAB}`);
 
@@ -80,18 +80,72 @@ async function consultarPorOAB(uf, numeroOAB) {
     }
 }
 
-// Busca processo por número CNJ
+// Busca processo por número CNJ — tenta V1 (mais dados) depois V2
 async function consultarPorProcesso(numero) {
     console.log(`[Escavador] 🔍 Buscando processo: ${numero}`);
 
+    // Tenta V1 primeiro (base maior)
     try {
-        const res = await axios.get(`${BASE}/processos/${numero}`, {
+        const res = await axios.get(`https://api.escavador.com/api/v1/processos/${numero}`, {
+            headers: { 'Authorization': `Bearer ${API_KEY}` },
+            timeout: 15000
+        });
+        console.log(`[Escavador] V1 response keys: ${Object.keys(res.data || {}).join(', ')}`);
+
+        const p = res.data;
+        if (p && (p.numero_cnj || p.numero || p.numeroProcesso)) {
+            console.log('[Escavador] ✅ Encontrado via V1');
+            return [{
+                numero: p.numero_cnj || p.numeroProcesso || p.numero,
+                tribunal: p.tribunal || p.fontes?.[0]?.nome || '',
+                classe: p.classe || '',
+                data: p.data_inicio || '',
+                grau: p.grau || '',
+                orgaoJulgador: p.orgao || '',
+                _score: null
+            }];
+        }
+        console.log('[Escavador] V1 retornou mas sem dados válidos, corpo:', JSON.stringify(res.data).substring(0, 300));
+    } catch (err) {
+        const status = err.response?.status;
+        console.log(`[Escavador] V1 falhou (${status}), tentando busca alternativa...`);
+    }
+
+    // Tenta busca por texto V1
+    try {
+        const res = await axios.get(`https://api.escavador.com/api/v1/busca`, {
+            params: { qo: numero },
+            headers: { 'Authorization': `Bearer ${API_KEY}` },
+            timeout: 15000
+        });
+        const items = res.data?.items || res.data || [];
+        if (items.length > 0) {
+            const p = Array.isArray(items) ? items[0] : items;
+            console.log('[Escavador] ✅ Encontrado via busca V1');
+            return [{
+                numero: p.numero_cnj || p.numeroProcesso || p.numero || numero,
+                tribunal: p.tribunal || p.fontes?.[0]?.nome || '',
+                classe: p.classe || '',
+                data: p.data_inicio || '',
+                grau: p.grau || '',
+                orgaoJulgador: p.orgao || '',
+                _score: null
+            }];
+        }
+    } catch (err) {
+        console.log(`[Escavador] Busca V1 falhou: ${err.message}`);
+    }
+
+    // Fallback V2
+    try {
+        const res = await axios.get(`https://api.escavador.com/api/v2/processos/${numero}`, {
             headers: { 'Authorization': `Bearer ${API_KEY}` },
             timeout: 15000
         });
 
         const p = res.data;
         if (!p || !p.numero_cnj) return [];
+        console.log('[Escavador] ✅ Encontrado via V2');
 
         return [{
             numero: p.numero_cnj,
@@ -105,7 +159,7 @@ async function consultarPorProcesso(numero) {
 
     } catch (err) {
         if (err.response?.status === 404) {
-            console.log('[Escavador] ⚠️ Processo não encontrado');
+            console.log('[Escavador] ⚠️ Processo não encontrado em nenhum endpoint');
             return [];
         }
         const status = err.response?.status;
