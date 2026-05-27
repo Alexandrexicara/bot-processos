@@ -54,7 +54,7 @@ async function consultar(query) {
 
     // Processo
     const numero = typeof query === 'string' ? query : (query.numero || query.original);
-    if (!numero) return null;
+    if (!numero) return [];
     return consultarPorProcesso(numero);
 }
 
@@ -63,19 +63,22 @@ async function consultarPorOAB(uf, numeroOAB) {
     console.log(`[Escavador] 🔍 Buscando OAB ${uf}/${numeroOAB}`);
 
     try {
-        const res = await axios.get(`${BASE}/envolvido/processos`, {
-            params: { oab_estado: uf.toUpperCase(), oab_numero: numeroOAB },
+        const res = await axios.get(`${BASE}/busca`, {
+            params: { q: `${uf} ${numeroOAB}`, pagina: 1 },
             headers,
             timeout: 30000
         });
 
-        console.log(`[Escavador] STATUS: ${res.status}`);
+        console.log(`[Escavador] OAB STATUS: ${res.status}`);
         const processos = extrairProcessos(res.data);
         console.log(`[Escavador] ✅ ${processos.length} processos (max 15)`);
         return processos.map(formatar);
 
     } catch (err) {
-        console.error(`[Escavador] ❌ OAB: ${err.response?.status}`, err.response?.data || err.message);
+        console.error('[Escavador] ❌❌❌ ERRO OAB COMPLETO:');
+        console.error('   STATUS:', err.response?.status);
+        console.error('   DATA:', JSON.stringify(err.response?.data).substring(0, 1000));
+        console.error('   MESSAGE:', err.message);
         return [];
     }
 }
@@ -117,7 +120,10 @@ async function consultarPorProcesso(numero) {
             console.log('[Escavador] ⚠️ Processo não encontrado');
             return [];
         }
-        console.error(`[Escavador] ❌ Processo: ${err.response?.status}`, err.response?.data || err.message);
+        console.error('[Escavador] ❌❌❌ ERRO PROCESSO COMPLETO:');
+        console.error('   STATUS:', err.response?.status);
+        console.error('   DATA:', JSON.stringify(err.response?.data).substring(0, 1000));
+        console.error('   MESSAGE:', err.message);
         return [];
     }
 
@@ -128,25 +134,23 @@ async function consultarPorProcesso(numero) {
 async function consultarPorDocumento(tipo, valor) {
     console.log(`[Escavador] 🔍 Buscando ${tipo}: ${valor}`);
 
-    const params = {};
-    if (tipo === 'cpf') params.cpf = valor;
-    else if (tipo === 'cnpj') params.cnpj = valor;
-    else params.nome = valor;
-
     try {
-        const res = await axios.get(`${BASE}/envolvido/processos`, {
-            params,
+        const res = await axios.get(`${BASE}/busca`, {
+            params: { q: valor, pagina: 1 },
             headers,
             timeout: 30000
         });
 
-        console.log(`[Escavador] STATUS: ${res.status}`);
+        console.log(`[Escavador] ${tipo} STATUS: ${res.status}`);
         const processos = extrairProcessos(res.data);
         console.log(`[Escavador] ✅ ${processos.length} processos (max 15)`);
         return processos.map(formatar);
 
     } catch (err) {
-        console.error(`[Escavador] ❌ ${tipo}: ${err.response?.status}`, err.response?.data || err.message);
+        console.error(`[Escavador] ❌❌❌ ERRO ${tipo.toUpperCase()} COMPLETO:`);
+        console.error('   STATUS:', err.response?.status);
+        console.error('   DATA:', JSON.stringify(err.response?.data).substring(0, 1000));
+        console.error('   MESSAGE:', err.message);
         return [];
     }
 }

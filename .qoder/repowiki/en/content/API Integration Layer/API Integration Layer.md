@@ -22,10 +22,9 @@
 
 ## Update Summary
 **Changes Made**
-- Enhanced Escavador API integration with standardized response processing functions
-- Added new `extrairProcessos()` function for unified response processing across all endpoints
-- Added new `formatar()` function for consistent data formatting and field normalization
-- Improved error handling throughout all Escavador endpoints with enhanced logging
+- Enhanced error handling in apiRouter.js now supports both array and single object responses from Escavador API
+- Improved logging and response processing logic with comprehensive type checking
+- Added robust response validation for Escavador service integration
 - Enhanced fallback mechanisms with standardized response processing
 - Streamlined API service architecture focusing on Escavador-first priority
 
@@ -48,7 +47,7 @@
 ## Introduction
 This document describes the API integration layer that powers the judicial process monitoring system. The system has evolved to support a streamlined tiered access strategy with a simplified architecture where Escavador serves as the primary foundation. The unified API interface abstracts external legal database access, request/response handling, and error management while providing flexible service selection based on user subscription tiers and configuration.
 
-**Updated**: The new architecture focuses exclusively on Escavador as the base principal service, with enhanced standardized response processing and improved error handling throughout all endpoints. The system now features enhanced document-based search capabilities with dedicated CPF, CNPJ, and name-based query endpoints, providing comprehensive legal research functionality with consistent data formatting.
+**Updated**: The new architecture focuses exclusively on Escavador as the base principal service, with enhanced standardized response processing and improved error handling throughout all endpoints. The system now features enhanced document-based search capabilities with dedicated CPF, CNPJ, and name-based query endpoints, providing comprehensive legal research functionality with consistent data formatting. The recent enhancement to apiRouter.js now supports both array and single object responses from Escavador API, with comprehensive type checking and validation logic.
 
 ## Project Structure
 The system now operates as a streamlined legal database integration platform with a focused service architecture centered around Escavador:
@@ -84,6 +83,7 @@ API --> CUSTOM
 WORKER --> API
 BOT --> API
 PARSER --> BOT
+PARSER --> ESCAVADOR
 end
 subgraph "Data Layer"
 DB["PostgreSQL Schema<br/>database.sql"]
@@ -111,8 +111,10 @@ WORKER --> DB
 The API integration layer now consists of four key components with a simplified architecture centered around Escavador:
 
 ### Unified API Router (Escavador-First)
-The central orchestrator implementing a streamlined tiered access strategy:
+The central orchestrator implementing a streamlined tiered access strategy with enhanced response validation:
 - **Escavador-first priority**: Escavador service is always attempted first as the primary foundation
+- **Dual response format support**: Now handles both array and single object responses from Escavador API
+- **Comprehensive type validation**: Implements robust type checking for array, object, and null responses
 - **Conditional premium integration**: Premium services are only attempted if user has configured them and mode requires additional services
 - **Simplified fallback logic**: Reduced complexity compared to previous multi-tier fallback system
 - **User context preservation**: Maintains user preferences and authentication throughout the streamlined process
@@ -159,7 +161,7 @@ JWT-based authentication system with enhanced security features:
 - [auth.js:1-59](file://auth.js#L1-L59)
 
 ## Architecture Overview
-The system now implements a streamlined layered architecture with Escavador as the primary foundation and enhanced standardized response processing:
+The system now implements a streamlined layered architecture with Escavador as the primary foundation and enhanced standardized response processing with comprehensive error handling:
 
 ```mermaid
 sequenceDiagram
@@ -173,16 +175,20 @@ participant Premium as "Premium Services"
 participant DB as "Database"
 User->>Bot : Send search query
 Bot->>API : consultarProcesso(query, user)
-Note over API : Escavador-first priority
+Note over API : Escavador-first priority with dual response support
 API->>Escavador : consultar(query)
 Escavador->>Extract : Process response data
 Extract-->>Escavador : Extracted process array
 Escavador->>Format : Format individual processes
 Format-->>Escavador : Standardized process objects
-Escavador-->>API : Results or null
-alt Escavador success
+Escavador-->>API : Array or Single Object Response
+alt Array Response
+API->>API : Validate Array.isArray(response) && response.length > 0
 API-->>Bot : Return Escavador results
-else Escavador failure or null
+else Single Object Response
+API->>API : Validate typeof response === 'object' && response.numero
+API-->>Bot : Return Escavador results
+else Null/Empty Response
 API->>Premium : buscarPagas(query) (if configured)
 Premium-->>API : Results or null
 API-->>Bot : Return Premium results or null
@@ -199,6 +205,7 @@ Bot-->>User : Process information
 
 The architecture ensures:
 - **Escavador-first priority**: Primary service selection with comprehensive coverage
+- **Dual response format support**: Handles both array and single object responses seamlessly
 - **Conditional premium integration**: Premium services only attempted when configured and needed
 - **Fail-safe operation**: System continues functioning even if premium services fail
 - **Consistent response format**: Unified data structure across all service providers using standardized functions
@@ -208,7 +215,7 @@ The architecture ensures:
 ## Detailed Component Analysis
 
 ### Streamlined API Router Implementation
-The API router now implements a simplified multi-mode routing with Escavador-first priority:
+The API router now implements a simplified multi-mode routing with Escavador-first priority and enhanced response validation:
 
 ```mermaid
 flowchart TD
@@ -218,8 +225,15 @@ GetMode --> CheckType{"Query Type"}
 CheckType --> |OAB/Processo| EscavadorFirst["Try Escavador First"]
 CheckType --> |CPF/CNPJ/Nome| EscavadorFirst
 EscavadorFirst --> EscavadorSuccess{"Escavador Results<br/>Found?"}
-EscavadorSuccess --> |Yes| ReturnEscavador["Return Escavador Data"]
-EscavadorSuccess --> |No| PremiumCheck{"Premium Services<br/>Configured?"}
+EscavadorSuccess --> |Yes| ValidateResponse["Validate Response Format"]
+ValidateResponse --> ArrayCheck{"Array Response?"}
+ArrayCheck --> |Yes| ArrayProcess["Process Array Results"]
+ArrayProcess --> ReturnEscavador["Return Escavador Data"]
+ArrayCheck --> |No| ObjectCheck{"Single Object Response?"}
+ObjectCheck --> |Yes| ObjectProcess["Process Single Object"]
+ObjectProcess --> ReturnEscavador
+ObjectCheck --> |No| PremiumCheck{"Premium Services<br/>Configured?"}
+EscavadorSuccess --> |No| PremiumCheck
 PremiumCheck --> |Yes| PremiumFirst["Try Premium Services<br/>buscarPagas()"]
 PremiumCheck --> |No| ReturnNull["Return Null"]
 PremiumFirst --> PremiumSuccess{"Premium Results<br/>Found?"}
@@ -235,9 +249,11 @@ ReturnNull --> End
 
 Key implementation characteristics:
 - **Escavador-first priority**: Always attempts Escavador service first as the primary foundation
+- **Dual response format support**: Enhanced validation for both array and single object responses
+- **Comprehensive type checking**: Uses Array.isArray() and typeof validation for robust response handling
 - **Conditional premium execution**: Premium services are only attempted if user has configured them and mode requires additional services
 - **Simplified error handling**: Reduced complexity compared to previous multi-tier fallback system
-- **Response normalization**: Adds service attribution to all results regardless of source
+- **Response normalization**: Adds service attribution to all results regardless of source format
 
 **Section sources**
 - [apiRouter.js:8-31](file://apiRouter.js#L8-L31)
@@ -248,7 +264,7 @@ The primary service adapter now provides comprehensive legal research platform i
 ```mermaid
 classDiagram
 class EscavadorAdapter {
-+consultar(query) Promise~Object[]|null~
++consultar(query) Promise~Object[]|Object|null~
 +consultarPorOAB(uf, numero) Promise~Object[]|null~
 +consultarPorProcesso(numero) Promise~Object[]|null~
 +consultarPorDocumento(tipo, valor) Promise~Object[]|null~
@@ -299,6 +315,37 @@ Implementation details:
 **Section sources**
 - [services/escavador.js:15-36](file://services/escavador.js#L15-L36)
 - [services/escavador.js:10-159](file://services/escavador.js#L10-L159)
+
+### Enhanced Response Validation Logic
+**Updated**: The apiRouter.js now implements comprehensive response validation supporting both array and single object responses:
+
+#### Dual Response Format Support
+The enhanced validation logic now handles two distinct response formats:
+
+##### Array Response Format
+- **Validation**: `Array.isArray(esc) && esc.length > 0`
+- **Processing**: Iterates through array and adds service attribution
+- **Return**: Direct array response with fonte attribute set
+
+##### Single Object Response Format
+- **Validation**: `esc && typeof esc === 'object' && !Array.isArray(esc) && esc.numero`
+- **Processing**: Wraps single object in array and adds service attribution
+- **Return**: Array containing single object with fonte attribute set
+
+#### Comprehensive Type Checking
+The validation logic implements robust type checking:
+- **Array detection**: Uses `Array.isArray()` for reliable array identification
+- **Object validation**: Ensures response is an object and not an array
+- **Property verification**: Validates presence of required `numero` property
+- **Null safety**: Handles null, undefined, and empty responses gracefully
+
+#### Enhanced Error Handling
+- **Comprehensive logging**: Logs response format and validation results
+- **Graceful fallback**: Continues to premium services when validation fails
+- **Debug information**: Provides detailed error context for troubleshooting
+
+**Section sources**
+- [apiRouter.js:21-31](file://apiRouter.js#L21-L31)
 
 ### Standardized Response Processing Functions
 **New**: Two critical utility functions have been added to provide standardized response processing and formatting:
@@ -435,10 +482,10 @@ Monitoring features:
 - [worker.js:1-74](file://worker.js#L1-L74)
 
 ## Escavador-First Architecture
-**Updated**: The system now implements a comprehensive Escavador-first architecture that prioritizes Escavador as the primary service foundation, with premium services as optional enhancements and standardized response processing.
+**Updated**: The system now implements a comprehensive Escavador-first architecture that prioritizes Escavador as the primary service foundation, with premium services as optional enhancements and standardized response processing with enhanced dual-format support.
 
 ### Escavador-First Priority Strategy
-The system follows a strict priority order with Escavador as the foundation:
+The system follows a strict priority order with Escavador as the foundation and enhanced response validation:
 
 ```mermaid
 flowchart TD
@@ -447,14 +494,20 @@ Escavador --> EscavadorCheck{"API Key Available?"}
 EscavadorCheck --> |Yes| EscavadorCall["Call Escavador API"]
 EscavadorCheck --> |No| PremiumSkip["Skip Premium (API Key Missing)"]
 EscavadorCall --> EscavadorSuccess{"Results Found?"}
-EscavadorSuccess --> |Yes| ReturnEscavador["Return Escavador Results"]
-EscavadorSuccess --> |No| PremiumCheck{"Premium Services<br/>Configured?"}
+EscavadorSuccess --> |Yes| ResponseValidation["Validate Response Format"]
+ResponseValidation --> ArrayResponse{"Array Response?"}
+ArrayResponse --> |Yes| ReturnArray["Return Array Results"]
+ArrayResponse --> |No| SingleResponse{"Single Object?"}
+SingleResponse --> |Yes| ReturnSingle["Return Single Object"]
+SingleResponse --> |No| PremiumCheck{"Premium Services<br/>Configured?"}
+EscavadorSuccess --> |No| PremiumCheck
 PremiumCheck --> |Yes| PremiumCall["Call Premium Services"]
 PremiumCheck --> |No| ReturnNull["Return Null"]
 PremiumCall --> PremiumSuccess{"Results Found?"}
 PremiumSuccess --> |Yes| ReturnPremium["Return Premium Results"]
 PremiumSuccess --> |No| ReturnNull
-ReturnEscavador --> End["End"]
+ReturnArray --> End["End"]
+ReturnSingle --> End
 ReturnPremium --> End
 ReturnNull --> End
 ```
@@ -464,7 +517,7 @@ ReturnNull --> End
 - [services/escavador.js:11-14](file://services/escavador.js#L11-L14)
 
 ### Enhanced Error Handling and User Feedback
-The system provides comprehensive error handling and user feedback for Escavador-first operations:
+The system provides comprehensive error handling and user feedback for Escavador-first operations with enhanced response validation:
 
 ```mermaid
 sequenceDiagram
@@ -505,6 +558,7 @@ Escavador provides comprehensive legal research platform integration with enhanc
 - **Field extraction**: Extracts relevant fields like numero, tribunal, classe, data, grau, orgaoJulgador
 - **Score handling**: Sets _score to null for Escavador results
 - **Enhanced logging**: Comprehensive logging of all response processing steps
+- **Dual response support**: Handles both array and single object response formats
 
 **Section sources**
 - [apiRouter.js:8-31](file://apiRouter.js#L8-L31)
@@ -512,10 +566,10 @@ Escavador provides comprehensive legal research platform integration with enhanc
 - [botManager.js:111-119](file://botManager.js#L111-L119)
 
 ## Enhanced Document-Based Search
-**Updated**: The system now features comprehensive document-based search capabilities with dedicated endpoints for CPF, CNPJ, and name-based queries and enhanced standardized response processing.
+**Updated**: The system now features comprehensive document-based search capabilities with dedicated endpoints for CPF, CNPJ, and name-based queries and enhanced standardized response processing with dual-format support.
 
 ### Document Search Architecture
-The Escavador service now implements a unified document search system with standardized response processing:
+The Escavador service now implements a unified document search system with standardized response processing and enhanced validation:
 
 ```mermaid
 flowchart TD
@@ -529,61 +583,82 @@ NameSearch --> DocumentEndpoint
 DocumentEndpoint --> ProcessResults["Process Results<br/>Extract CNJ Numbers"]
 ProcessResults --> ExtractFunction["extrairProcessos()<br/>Standardized Extraction"]
 ExtractFunction --> FormatFunction["formatar()<br/>Standardized Formatting"]
-FormatFunction --> ReturnResults["Return Unified Results"]
+FormatFunction --> ValidateResponse["Validate Response Format"]
+ValidateResponse --> ArrayResponse{"Array Response?"}
+ArrayResponse --> |Yes| ReturnResults["Return Array Results"]
+ArrayResponse --> |No| SingleResponse{"Single Object?"}
+SingleResponse --> |Yes| WrapObject["Wrap in Array"]
+WrapObject --> ReturnResults
+SingleResponse --> |No| HandleError["Handle Error"]
+HandleError --> PremiumFallback["Premium Fallback"]
 ```
 
 **Diagram sources**
 - [services/escavador.js:127-152](file://services/escavador.js#L127-L152)
 - [services/escavador.js:15-36](file://services/escavador.js#L15-L36)
+- [apiRouter.js:21-31](file://apiRouter.js#L21-L31)
 
 ### Document Search Implementation Details
-The `consultarPorDocumento` function provides centralized document-based search functionality with enhanced standardized processing:
+The `consultarPorDocumento` function provides centralized document-based search functionality with enhanced standardized processing and dual-format support:
 
 #### CPF Search Capability
 - **Endpoint**: `/envolvido/processos?cpf={cpf}`
 - **Validation**: Accepts 11-digit CPF numbers
 - **Results**: Returns up to 15 legal cases linked to the CPF
 - **Processing**: Uses `extrairProcessos()` for extraction and `formatar()` for formatting
+- **Response Format**: Supports both array and single object responses
 
 #### CNPJ Search Capability
 - **Endpoint**: `/envolvido/processos?cnpj={cnpj}`
 - **Validation**: Accepts 14-digit CNPJ numbers
 - **Results**: Returns up to 15 legal cases linked to the CNPJ
 - **Processing**: Uses `extrairProcessos()` for extraction and `formatar()` for formatting
+- **Response Format**: Supports both array and single object responses
 
 #### Name Search Capability
 - **Endpoint**: `/envolvido/processos?nome={nome}`
 - **Validation**: Accepts text strings with minimum 3 characters
 - **Results**: Returns up to 15 legal cases containing the name
 - **Processing**: Uses `extrairProcessos()` for extraction and `formatar()` for formatting
+- **Response Format**: Supports both array and single object responses
 
 #### Enhanced Error Handling
 - **Timeout Management**: 30-second timeout for document searches
 - **Error Logging**: Comprehensive error logging with status codes and messages
 - **Graceful Degradation**: Returns null on service errors, allowing fallback to premium services
 - **Result Normalization**: Consistent response format across all document types using standardized functions
+- **Dual Response Support**: Handles both array and single object responses seamlessly
 
 **Section sources**
 - [services/escavador.js:127-152](file://services/escavador.js#L127-L152)
 - [parser.js:47-67](file://parser.js#L47-L67)
 
 ## Standardized Response Processing
-**New**: The system now implements comprehensive standardized response processing with two critical utility functions that ensure consistent data formatting across all endpoints.
+**New**: The system now implements comprehensive standardized response processing with two critical utility functions that ensure consistent data formatting across all endpoints and enhanced dual-format support.
 
 ### Response Processing Architecture
-The new standardized response processing system provides consistent data transformation:
+The new standardized response processing system provides consistent data transformation with comprehensive validation:
 
 ```mermaid
 flowchart TD
 RawResponse["Raw Escavador Response"] --> ExtractFunction["extrairProcessos()<br/>Universal Extraction"]
 ExtractFunction --> ProcessArray["Process Array<br/>Max 15 Results"]
 ProcessArray --> FormatFunction["formatar()<br/>Field Normalization"]
-FormatFunction --> Standardized["Standardized Object<br/>{numero, tribunal, classe, data, grau, orgaoJulgador, _score}"]
-Standardized --> UnifiedAPI["Unified API Response"]
+FormatFunction --> ValidateResponse["Validate Response Format"]
+ValidateResponse --> ArrayResponse{"Array Response?"}
+ArrayResponse --> |Yes| ReturnArray["Return Array Results"]
+ArrayResponse --> |No| SingleResponse{"Single Object?"}
+SingleResponse --> |Yes| WrapObject["Wrap in Array"]
+WrapObject --> ReturnSingle["Return Single Object"]
+SingleResponse --> |No| HandleError["Handle Error"]
+HandleError --> PremiumFallback["Premium Fallback"]
+ReturnArray --> UnifiedAPI["Unified API Response"]
+ReturnSingle --> UnifiedAPI
 ```
 
 **Diagram sources**
 - [services/escavador.js:15-36](file://services/escavador.js#L15-L36)
+- [apiRouter.js:21-31](file://apiRouter.js#L21-L31)
 
 ### extrairProcessos() Function Implementation
 The universal response extraction function handles multiple response formats:
@@ -755,7 +830,7 @@ Dependency characteristics:
 - [package.json:11-19](file://package.json#L11-L19)
 
 ## Performance Considerations
-The system implements comprehensive performance optimization strategies across all service layers with enhanced standardized response processing:
+The system implements comprehensive performance optimization strategies across all service layers with enhanced standardized response processing and dual-format support:
 
 ### Multi-Tenant Caching Strategies
 - **Telegram bot instance caching**: Prevents recreation overhead with token-based caching
@@ -793,6 +868,14 @@ The system implements comprehensive performance optimization strategies across a
 - **Efficient field mapping**: `formatar()` uses direct property mapping for speed
 - **Minimal object creation**: Standardized objects created only when needed
 - **Logging optimization**: Conditional logging prevents performance impact in production
+- **Dual response validation**: Efficient type checking prevents unnecessary processing
+
+### Enhanced Response Validation Performance
+- **Fast array detection**: `Array.isArray()` provides O(1) array validation
+- **Optimized object validation**: Combined type and property checks minimize overhead
+- **Early exit conditions**: Validation stops at first successful match
+- **Memory-efficient wrapping**: Single object wrapping creates minimal overhead
+- **Comprehensive error handling**: Prevents cascading failures and performance degradation
 
 ## Troubleshooting Guide
 
@@ -817,6 +900,11 @@ The system implements comprehensive performance optimization strategies across a
 **Problem**: Document-based searches (CPF, CNPJ, nome) failing or returning empty results
 **Solution**: Verify document format (11 digits for CPF, 14 digits for CNPJ, minimum 3 characters for names)
 **Detection**: Escavador service implements comprehensive error logging for document search failures
+
+#### Enhanced Response Validation Issues
+**Problem**: Dual response format support causing unexpected behavior
+**Solution**: Verify that both array and single object responses are properly validated
+**Detection**: Check apiRouter.js validation logic for Array.isArray() and typeof checks
 
 #### Standardized Response Processing Issues
 **Problem**: Inconsistent response formats from Escavador endpoints
@@ -843,6 +931,11 @@ The system implements comprehensive performance optimization strategies across a
 **Solution**: Verify environment variables are properly exported to the process environment
 **Prevention**: Implement server startup validation for critical API keys
 
+#### Response Format Compatibility Issues
+**Problem**: Mixed response formats causing downstream processing errors
+**Solution**: Ensure all service responses pass through apiRouter.js validation logic
+**Detection**: Monitor response validation logs and error patterns
+
 ### Error Handling Patterns
 The system follows consistent error handling patterns across all service layers:
 - **Silent failure mode**: Premium services return null when not configured
@@ -851,16 +944,18 @@ The system follows consistent error handling patterns across all service layers:
 - **User-friendly error messages**: API responses provide meaningful error information
 - **Service-specific error handling**: Each service implements appropriate error recovery
 - **Standardized response processing**: All Escavador responses pass through `extrairProcessos()` and `formatar()` functions
+- **Dual response validation**: Enhanced validation ensures compatibility with both array and single object formats
 
 **Section sources**
 - [services/premium.js:1-12](file://services/premium.js#L1-L12)
 - [services/custom.js:7-9](file://services/custom.js#L7-L9)
 - [services/escavador.js:11-14](file://services/escavador.js#L11-L14)
+- [apiRouter.js:21-31](file://apiRouter.js#L21-L31)
 
 ## Conclusion
 The API integration layer now provides a comprehensive, streamlined foundation for judicial process monitoring with Escavador as the primary service foundation and enhanced standardized response processing. The new `extrairProcessos()` and `formatar()` functions ensure consistent data formatting across all endpoints, while improved error handling and logging enhance system reliability. The enhanced tiered access strategy supports three distinct service modes: free Escavador service, premium paid services, and hybrid mode combining both approaches. The modular architecture allows for easy integration of additional legal database providers while maintaining consistent behavior and error handling.
 
-**Updated**: The new Escavador-first architecture significantly improves reliability and user experience by prioritizing the most comprehensive legal research platform as the primary service foundation. The enhanced standardized response processing with `extrairProcessos()` and `formatar()` functions ensures consistent data formatting across all endpoints, while the improved error handling throughout all services provides better debugging and monitoring capabilities. The simplified service selection logic (Escavador → Premium) with server-level API key support enhances deployment flexibility and reduces user configuration complexity. The priority-based approach ensures maximum success rates for searches while providing comprehensive error handling and user feedback.
+**Updated**: The new Escavador-first architecture significantly improves reliability and user experience by prioritizing the most comprehensive legal research platform as the primary service foundation. The enhanced dual response format support in apiRouter.js now seamlessly handles both array and single object responses from Escavador API, with comprehensive type validation and error handling. The enhanced standardized response processing with `extrairProcessos()` and `formatar()` functions ensures consistent data formatting across all endpoints, while the improved error handling throughout all services provides better debugging and monitoring capabilities. The simplified service selection logic (Escavador → Premium) with server-level API key support enhances deployment flexibility and reduces user configuration complexity. The priority-based approach ensures maximum success rates for searches while providing comprehensive error handling and user feedback.
 
 The system's design emphasizes reliability, performance, scalability, and maintainability, making it suitable for enterprise-level legal database integration with support for multiple service providers and tenant contexts.
 
@@ -912,21 +1007,27 @@ The system supports four distinct document-based search types:
 | `nome` | 3+ characters | `João da Silva` | Text-based legal case searches by name |
 | `oab` | UF + number | `SP 12345` | OAB-based legal case searches |
 
-### Standardized Response Processing Functions
-**New**: Two critical utility functions for consistent data processing:
+### Enhanced Response Validation Functions
+**Updated**: Three critical validation functions for comprehensive response processing:
 
-#### extrairProcessos() Function
-- **Purpose**: Extract process arrays from various response formats
-- **Features**: Multiple format support, null safety, result limiting, comprehensive logging
-- **Usage**: Called by all Escavador endpoints after API responses
+#### Array Response Validation
+- **Purpose**: Validate array-based responses from Escavador API
+- **Features**: `Array.isArray(response) && response.length > 0` validation
+- **Usage**: Handles multiple result scenarios with consistent processing
 
-#### formatar() Function
-- **Purpose**: Convert individual process objects to standardized format
-- **Features**: Field normalization, multiple mapping support, empty value handling, score standardization
-- **Usage**: Called by all Escavador endpoints to format individual results
+#### Single Object Response Validation
+- **Purpose**: Validate single object responses from Escavador API
+- **Features**: `typeof response === 'object' && response.numero` validation
+- **Usage**: Handles single result scenarios with automatic wrapping
+
+#### Dual Response Format Support
+- **Purpose**: Seamless handling of both array and single object responses
+- **Features**: Comprehensive type checking and validation logic
+- **Usage**: Ensures backward compatibility and forward extensibility
 
 **Section sources**
 - [parser.js:47-67](file://parser.js#L47-L67)
 - [services/escavador.js:127-152](file://services/escavador.js#L127-L152)
 - [botManager.js:115-134](file://botManager.js#L115-L134)
 - [services/escavador.js:15-36](file://services/escavador.js#L15-L36)
+- [apiRouter.js:21-31](file://apiRouter.js#L21-L31)
