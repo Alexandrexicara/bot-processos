@@ -17,7 +17,16 @@
 - [database.sql](file://database.sql)
 - [services/datajud.js](file://services/datajud.js)
 - [services/premium.js](file://services/premium.js)
+- [services/escavador.js](file://services/escavador.js)
+- [services/jusbrasil.js](file://services/jusbrasil.js)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Updated admin panel documentation to clarify the distinction between server-configured Escavador service and optional user-configured paid services
+- Added detailed explanation of Escavador as the base principal service automatically configured by administrators
+- Enhanced user configuration documentation to explain the difference between free and paid service modes
+- Updated dashboard configuration section to reflect the new service architecture
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -25,14 +34,15 @@
 3. [Core Components](#core-components)
 4. [Architecture Overview](#architecture-overview)
 5. [Detailed Component Analysis](#detailed-component-analysis)
-6. [Dependency Analysis](#dependency-analysis)
-7. [Performance Considerations](#performance-considerations)
-8. [Troubleshooting Guide](#troubleshooting-guide)
-9. [Conclusion](#conclusion)
-10. [Appendices](#appendices)
+6. [Service Architecture and Configuration](#service-architecture-and-configuration)
+7. [Dependency Analysis](#dependency-analysis)
+8. [Performance Considerations](#performance-considerations)
+9. [Troubleshooting Guide](#troubleshooting-guide)
+10. [Conclusion](#conclusion)
+11. [Appendices](#appendices)
 
 ## Introduction
-This document describes the frontend interface for the “Process Management” application. It covers the admin panel, user dashboard, login interface, and the JavaScript interactions that power them. It also documents CSS styling patterns, responsive design considerations, and user experience optimizations. Practical examples illustrate form submissions, AJAX requests, data visualization, and periodic updates. Guidance is included for cross-browser compatibility, accessibility, and performance.
+This document describes the frontend interface for the "Process Management" application. It covers the admin panel, user dashboard, login interface, and the JavaScript interactions that power them. The system now features a dual-service architecture where Escavador serves as the base principal service automatically configured by administrators, while optional user-configured paid services provide enhanced functionality. It also documents CSS styling patterns, responsive design considerations, and user experience optimizations. Practical examples illustrate form submissions, AJAX requests, data visualization, and real-time updates. Guidance is included for cross-browser compatibility, accessibility, and performance.
 
 ## Project Structure
 The frontend assets reside under the public directory and are served statically by the Express server. The main pages are:
@@ -66,6 +76,8 @@ end
 subgraph "Services"
 DJ["services/datajud.js"]
 PR["services/premium.js"]
+ES["services/escavador.js"]
+JB["services/jusbrasil.js"]
 end
 IDX --> LGIN
 LGIN --> LGJS
@@ -75,7 +87,9 @@ LGJS --> SRV
 PNJS --> SRV
 SRV --> AUTH
 SRV --> APIR
+APIR --> ES
 APIR --> DJ
+APIR --> JB
 APIR --> PR
 SRV --> DBSQL
 BOTM --> SRV
@@ -98,6 +112,8 @@ WRK --> SRV
 - [database.sql](file://database.sql)
 - [services/datajud.js](file://services/datajud.js)
 - [services/premium.js](file://services/premium.js)
+- [services/escavador.js](file://services/escavador.js)
+- [services/jusbrasil.js](file://services/jusbrasil.js)
 
 **Section sources**
 - [index.html](file://public/index.html)
@@ -115,6 +131,8 @@ WRK --> SRV
 - [database.sql](file://database.sql)
 - [services/datajud.js](file://services/datajud.js)
 - [services/premium.js](file://services/premium.js)
+- [services/escavador.js](file://services/escavador.js)
+- [services/jusbrasil.js](file://services/jusbrasil.js)
 
 ## Core Components
 - Admin Panel (index.html): Redirects to the login page.
@@ -136,7 +154,7 @@ WRK --> SRV
 - [app.js](file://public/app.js)
 
 ## Architecture Overview
-The frontend communicates with the backend via REST endpoints. Authentication uses JWT tokens stored in localStorage. The dashboard supports two roles: admin and client. Admins can manage users and view all processes; clients see only their own processes and configuration.
+The frontend communicates with the backend via REST endpoints. Authentication uses JWT tokens stored in localStorage. The dashboard supports two roles: admin and client. Admins can manage users and view all processes; clients see only their own processes and configuration. The system now implements a dual-service architecture where Escavador serves as the base principal service automatically configured by administrators, while optional user-configured paid services provide enhanced functionality.
 
 ```mermaid
 sequenceDiagram
@@ -357,7 +375,69 @@ end
 **Section sources**
 - [style.css](file://public/style.css)
 
-### Backend Integration and Data Flows
+## Service Architecture and Configuration
+
+### Escavador Service Configuration
+The system implements a dual-service architecture where Escavador serves as the base principal service automatically configured by administrators. This service is always available and doesn't require user configuration.
+
+**Key Characteristics:**
+- **Server-configured**: Automatically configured by administrators via environment variables
+- **Base principal**: Primary service that powers all user searches
+- **Always available**: No user configuration required
+- **Automatic fallback**: Used as the foundation for all process lookups
+
+**Configuration Details:**
+- API Key managed server-side via `ESCAVADOR_API_KEY` environment variable
+- Automatically initialized during server startup
+- Provides essential DataJud functionality as the base service
+- Works independently of user API keys
+
+### User-Configured Paid Services
+In addition to the Escavador base service, users can optionally configure paid services for enhanced functionality. These services are user-configurable and provide additional capabilities.
+
+**Supported Paid Services:**
+- **Jusbrasil**: Premium legal research platform
+- **Custom Services**: User-defined API integrations
+- **Digesto**: Legal database integration
+
+**Configuration Options:**
+- Available in "Híbrido" (Hybrid) and "Pago" (Paid) modes
+- Configured per-user basis
+- Optional API keys for enhanced functionality
+- Can be disabled if not needed
+
+### Service Priority and Mode Selection
+The system supports three operational modes that determine service priority:
+
+**Free Mode (`gratis`)**: Only Escavador service is used
+**Hybrid Mode (`hibrido`)**: Escavador + user-configured paid services if available
+**Paid Mode (`pago`)**: User-configured paid services take priority over Escavador
+
+```mermaid
+flowchart TD
+Mode["User Mode Selection"] --> Gratis["Grátis<br/>Escavador Only"]
+Mode --> Hybrid["Híbrido<br/>Escavador + Paid"]
+Mode --> Paid["Pago<br/>Paid Services Only"]
+Gratis --> Escavador["⚡ Escavador<br/>(Base Principal)"]
+Hybrid --> Escavador
+Hybrid --> PaidServices["💰 User Paid Services"]
+Paid --> PaidServices
+PaidServices --> Jusbrasil["Jusbrasil"]
+PaidServices --> Custom["Custom Services"]
+```
+
+**Diagram sources**
+- [apiRouter.js](file://apiRouter.js)
+- [services/escavador.js](file://services/escavador.js)
+- [services/jusbrasil.js](file://services/jusbrasil.js)
+
+**Section sources**
+- [painel.html](file://public/painel.html)
+- [apiRouter.js](file://apiRouter.js)
+- [services/escavador.js](file://services/escavador.js)
+- [services/jusbrasil.js](file://services/jusbrasil.js)
+
+## Backend Integration and Data Flows
 - Authentication:
   - Tokens are sent in the Authorization header as Bearer tokens.
   - Protected routes enforce middleware checks.
@@ -369,8 +449,10 @@ end
   - GET /auth/me: Returns current user profile.
   - POST /usuario: Creates a new user (admin only).
 - Data services:
-  - Free tier: Datajud API lookup.
-  - Premium fallback: Premium API lookup when configured.
+  - **Escavador**: Base principal service automatically configured by administrators.
+  - **DataJud**: Free tier service integrated with Escavador.
+  - **Jusbrasil**: Optional user-configured paid service.
+  - **Premium**: Placeholder for premium API integrations.
 
 ```mermaid
 graph LR
@@ -378,7 +460,9 @@ LJS["login.js"] --> S["server.js"]
 PJS["painel.js"] --> S
 S --> A["auth.js"]
 S --> AR["apiRouter.js"]
+AR --> ES["services/escavador.js"]
 AR --> DJ["services/datajud.js"]
+AR --> JB["services/jusbrasil.js"]
 AR --> PR["services/premium.js"]
 S --> DB["database.sql"]
 ```
@@ -389,7 +473,9 @@ S --> DB["database.sql"]
 - [server.js](file://server.js)
 - [auth.js](file://auth.js)
 - [apiRouter.js](file://apiRouter.js)
+- [services/escavador.js](file://services/escavador.js)
 - [services/datajud.js](file://services/datajud.js)
+- [services/jusbrasil.js](file://services/jusbrasil.js)
 - [services/premium.js](file://services/premium.js)
 - [database.sql](file://database.sql)
 
@@ -397,7 +483,9 @@ S --> DB["database.sql"]
 - [server.js](file://server.js)
 - [auth.js](file://auth.js)
 - [apiRouter.js](file://apiRouter.js)
+- [services/escavador.js](file://services/escavador.js)
 - [services/datajud.js](file://services/datajud.js)
+- [services/jusbrasil.js](file://services/jusbrasil.js)
 - [services/premium.js](file://services/premium.js)
 - [database.sql](file://database.sql)
 
@@ -408,7 +496,7 @@ S --> DB["database.sql"]
 - Backend-to-auth:
   - server.js routes use authMiddleware and adminMiddleware.
 - Backend-to-services:
-  - apiRouter orchestrates free and premium lookups.
+  - apiRouter orchestrates Escavador base service and user-configured paid services.
 - Backend-to-database:
   - All endpoints query the PostgreSQL schema defined in database.sql.
 
@@ -420,7 +508,9 @@ PJS["painel.js"] --> AUTH
 PJS --> SRV
 SRV --> DB["database.sql"]
 SRV --> APIR["apiRouter.js"]
+APIR --> ES["services/escavador.js"]
 APIR --> DJ["services/datajud.js"]
+APIR --> JB["services/jusbrasil.js"]
 APIR --> PR["services/premium.js"]
 ```
 
@@ -431,7 +521,9 @@ APIR --> PR["services/premium.js"]
 - [server.js](file://server.js)
 - [database.sql](file://database.sql)
 - [apiRouter.js](file://apiRouter.js)
+- [services/escavador.js](file://services/escavador.js)
 - [services/datajud.js](file://services/datajud.js)
+- [services/jusbrasil.js](file://services/jusbrasil.js)
 - [services/premium.js](file://services/premium.js)
 
 **Section sources**
@@ -441,7 +533,9 @@ APIR --> PR["services/premium.js"]
 - [server.js](file://server.js)
 - [database.sql](file://database.sql)
 - [apiRouter.js](file://apiRouter.js)
+- [services/escavador.js](file://services/escavador.js)
 - [services/datajud.js](file://services/datajud.js)
+- [services/jusbrasil.js](file://services/jusbrasil.js)
 - [services/premium.js](file://services/premium.js)
 
 ## Performance Considerations
@@ -463,8 +557,6 @@ APIR --> PR["services/premium.js"]
 - Cross-browser testing:
   - Validate behavior across modern browsers; polyfill where necessary.
 
-[No sources needed since this section provides general guidance]
-
 ## Troubleshooting Guide
 - Login fails:
   - Verify email and password correctness.
@@ -480,6 +572,13 @@ APIR --> PR["services/premium.js"]
 - Real-time updates not appearing:
   - Check periodic refresh logic and network connectivity.
   - Review worker and bot manager logs for failures.
+- Escavador service issues:
+  - Verify server-side API key configuration.
+  - Check administrator logs for service initialization errors.
+- Paid service configuration problems:
+  - Ensure user has selected appropriate mode (Híbrido/Pago).
+  - Verify API key format and validity.
+  - Check service availability and rate limits.
 
 **Section sources**
 - [login.js](file://public/login.js)
@@ -490,9 +589,7 @@ APIR --> PR["services/premium.js"]
 - [botManager.js](file://botManager.js)
 
 ## Conclusion
-The frontend provides a clean, role-aware interface with robust authentication and real-time updates. The login and dashboard pages are structured for maintainability and scalability, while the CSS offers a cohesive dark-theme experience. By following the recommended practices and troubleshooting steps, teams can ensure reliable performance and a positive user experience across devices and browsers.
-
-[No sources needed since this section summarizes without analyzing specific files]
+The frontend provides a clean, role-aware interface with robust authentication and real-time updates. The login and dashboard pages are structured for maintainability and scalability, while the CSS offers a cohesive dark-theme experience. The new dual-service architecture with Escavador as the base principal service and optional user-configured paid services provides flexibility while maintaining simplicity for users. By following the recommended practices and troubleshooting steps, teams can ensure reliable performance and a positive user experience across devices and browsers.
 
 ## Appendices
 
@@ -522,8 +619,32 @@ The frontend provides a clean, role-aware interface with robust authentication a
 - [auth.js](file://auth.js)
 
 ### Database Schema Summary
-- usuarios: id, email (unique), senha, tipo (default cliente), telegram_id, bot_token, api_key, modo (default gratis), criado_em
+- usuarios: id, email (unique), senha, tipo (default cliente), telegram_id, bot_token, api_key, modo (default gratis), ativo (default true), criado_em, ultimo_login
 - processos: id, numero, usuario_id (FK), ultimo_status, atualizado_em
 
 **Section sources**
 - [database.sql](file://database.sql)
+
+### Service Configuration Guide
+**Escavador Service (Base Principal)**
+- Automatically configured by administrators
+- Server-side API key management
+- No user configuration required
+- Always available as fallback service
+
+**User-Configured Paid Services**
+- Available in Híbrido and Pago modes
+- Optional API keys for enhanced functionality
+- Configured per user basis
+- Can be disabled if not needed
+
+**Mode Selection Impact**
+- Grátis: Only Escavador service used
+- Híbrido: Escavador + user-configured paid services
+- Pago: User-configured paid services only
+
+**Section sources**
+- [painel.html](file://public/painel.html)
+- [apiRouter.js](file://apiRouter.js)
+- [services/escavador.js](file://services/escavador.js)
+- [services/jusbrasil.js](file://services/jusbrasil.js)

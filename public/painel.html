@@ -51,10 +51,13 @@
         <h3>👥 Usuários Cadastrados</h3>
         <div style="margin-bottom:15px; display:flex; gap:10px; flex-wrap:wrap;">
             <span style="font-size:12px; color:#aaa;">
-                🟢 <span style="color:#39FF14;">Ativo</span> = pode usar o sistema
+                ⏳ <span style="color:#FFD700;">Pendente</span> = aguardando pagamento
             </span>
             <span style="font-size:12px; color:#aaa;">
-                🔴 <span style="color:#ff4444;">Bloqueado</span> = login recusado
+                ✅ <span style="color:#39FF14;">Pago</span> = acesso liberado
+            </span>
+            <span style="font-size:12px; color:#aaa;">
+                ❌ <span style="color:#ff4444;">Negado</span> = pagamento rejeitado
             </span>
         </div>
         <table>
@@ -64,6 +67,7 @@
                     <th>Tipo</th>
                     <th>Modo</th>
                     <th>Processos</th>
+                    <th>Pagamento</th>
                     <th>Status</th>
                     <th>Último Login</th>
                     <th>Ações</th>

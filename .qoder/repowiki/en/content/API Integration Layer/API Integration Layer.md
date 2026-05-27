@@ -2,17 +2,19 @@
 
 <cite>
 **Referenced Files in This Document**
-- [datajud.js](file://services/datajud.js)
-- [premium.js](file://services/premium.js)
-- [custom.js](file://services/custom.js)
-- [digesto.js](file://services/digesto.js)
-- [escavador.js](file://services/escavador.js)
-- [jusbrasil.js](file://services/jusbrasil.js)
 - [apiRouter.js](file://apiRouter.js)
+- [services/escavador.js](file://services/escavador.js)
+- [services/datajud.js](file://services/datajud.js)
+- [services/jusbrasil.js](file://services/jusbrasil.js)
+- [services/digesto.js](file://services/digesto.js)
+- [services/custom.js](file://services/custom.js)
+- [services/premium.js](file://services/premium.js)
 - [server.js](file://server.js)
 - [auth.js](file://auth.js)
 - [worker.js](file://worker.js)
 - [botManager.js](file://botManager.js)
+- [parser.js](file://parser.js)
+- [db.js](file://db.js)
 - [package.json](file://package.json)
 - [database.sql](file://database.sql)
 - [README.md](file://README.md)
@@ -20,11 +22,11 @@
 
 ## Update Summary
 **Changes Made**
-- Updated OAB search fallback mechanism documentation (Jusbrasil → Escavador → DataJud)
-- Enhanced server-level API key support documentation for premium services
-- Improved error handling and user feedback documentation for OAB searches
-- Added comprehensive fallback logic documentation for premium service integration
-- Updated service adapter patterns to reflect new OAB-specific implementations
+- Updated to reflect major architectural shift: Escavador now serves as the 'base principal' (main foundation) of the platform, replacing the previous complex fallback system
+- Simplified service selection logic in apiRouter.js to prioritize Escavador first, then optionally user-configured paid services in paid or hybrid modes
+- Enhanced DataJud service documentation to highlight new CNJ processing capabilities and server-level API key support
+- Updated premium service ecosystem documentation to reflect the new simplified architecture
+- Revised fallback mechanisms to focus on Escavador-first approach with optional premium service integration
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -35,7 +37,7 @@
 6. [Premium Service Ecosystem](#premium-service-ecosystem)
 7. [Multi-Tenant Search Capabilities](#multi-tenant-search-capabilities)
 8. [Service Adapter Pattern](#service-adapter-pattern)
-9. [OAB Search Fallback Mechanism](#oab-search-fallback-mechanism)
+9. [Escavador-First Architecture](#escavador-first-architecture)
 10. [Server-Level API Key Support](#server-level-api-key-support)
 11. [Dependency Analysis](#dependency-analysis)
 12. [Performance Considerations](#performance-considerations)
@@ -44,12 +46,12 @@
 15. [Appendices](#appendices)
 
 ## Introduction
-This document describes the API integration layer that powers the judicial process monitoring system. The system has evolved to support a comprehensive tiered access strategy with four distinct service modes: free DataJud service, premium paid services, hybrid mode combining both approaches, and multi-tenant search capabilities. The unified API interface abstracts external legal database access, request/response handling, and error management while providing flexible service selection based on user subscription tiers.
+This document describes the API integration layer that powers the judicial process monitoring system. The system has evolved to support a comprehensive tiered access strategy with a simplified architecture where Escavador serves as the primary foundation, with optional premium services as secondary enhancements. The unified API interface abstracts external legal database access, request/response handling, and error management while providing flexible service selection based on user subscription tiers and configuration.
 
-**Updated**: Enhanced with sophisticated OAB search fallback mechanisms and server-level API key support for improved reliability and user experience.
+**Updated**: The new architecture prioritizes Escavador as the base principal service, with premium services serving as optional enhancements for users who configure them. This simplifies the service selection logic while maintaining comprehensive multi-tenant capabilities.
 
 ## Project Structure
-The system now operates as a comprehensive legal database integration platform with modular service architecture:
+The system now operates as a streamlined legal database integration platform with a focused service architecture centered around Escavador:
 
 ```mermaid
 graph TB
@@ -62,28 +64,26 @@ ENDPOINT --> API
 AUTH --> SERVER
 SERVER --> ENDPOINT
 end
-subgraph "Service Layer"
-DATAJUD["Free Service Adapter<br/>services/datajud.js"]
-PREMIUM["Legacy Premium Adapter<br/>services/premium.js"]
-CUSTOM["Custom API Adapter<br/>services/custom.js"]
-DIGESTO["Digesto API Adapter<br/>services/digesto.js"]
+subgraph "Primary Service Layer"
 ESCAVADOR["Escavador API Adapter<br/>services/escavador.js"]
+end
+subgraph "Optional Premium Services"
 JUSBRASIL["Jusbrasil API Adapter<br/>services/jusbrasil.js"]
+DATAJUD["DataJud API Adapter<br/>services/datajud.js"]
+DIGESTO["Digesto API Adapter<br/>services/digesto.js"]
+CUSTOM["Custom API Adapter<br/>services/custom.js"]
+PREMIUM["Legacy Premium Adapter<br/>services/premium.js"]
 end
 subgraph "Integration Layer"
 WORKER["Background Worker<br/>worker.js"]
 BOT["Telegram Bot Manager<br/>botManager.js"]
 PARSER["Message Parser<br/>parser.js"]
-ENDPOINT --> DATAJUD
-ENDPOINT --> CUSTOM
-ENDPOINT --> DIGESTO
 ENDPOINT --> ESCAVADOR
-ENDPOINT --> JUSBRASIL
-API --> DATAJUD
-API --> CUSTOM
-API --> DIGESTO
 API --> ESCAVADOR
 API --> JUSBRASIL
+API --> DATAJUD
+API --> DIGESTO
+API --> CUSTOM
 WORKER --> API
 BOT --> API
 PARSER --> BOT
@@ -99,70 +99,70 @@ WORKER --> DB
 ```
 
 **Diagram sources**
-- [apiRouter.js:1-73](file://apiRouter.js#L1-L73)
-- [datajud.js:1-260](file://services/datajud.js#L1-L260)
-- [custom.js:1-26](file://services/custom.js#L1-L26)
-- [digesto.js:1-25](file://services/digesto.js#L1-L25)
-- [escavador.js:1-28](file://services/escavador.js#L1-L28)
-- [jusbrasil.js:1-39](file://services/jusbrasil.js#L1-L39)
-- [worker.js:1-74](file://worker.js#L1-L74)
-- [botManager.js:1-169](file://botManager.js#L1-L169)
+- [apiRouter.js:1-55](file://apiRouter.js#L1-L55)
+- [services/escavador.js:1-108](file://services/escavador.js#L1-L108)
+- [services/jusbrasil.js:1-197](file://services/jusbrasil.js#L1-L197)
+- [services/datajud.js:1-305](file://services/datajud.js#L1-L305)
+- [services/digesto.js:1-25](file://services/digesto.js#L1-L25)
+- [services/custom.js:1-26](file://services/custom.js#L1-L26)
+- [services/premium.js:1-12](file://services/premium.js#L1-L12)
+- [worker.js:1-74](file://worker.js#L1-74)
+- [botManager.js:1-190](file://botManager.js#L1-L190)
 
 **Section sources**
 - [README.md:1-56](file://README.md#L1-L56)
 - [package.json:1-21](file://package.json#L1-L21)
 
 ## Core Components
-The API integration layer now consists of five key components that work together to provide comprehensive legal database access:
+The API integration layer now consists of six key components with a simplified architecture centered around Escavador:
 
-### Unified API Router
-The central orchestrator implementing sophisticated tiered access strategies:
-- **Mode-based routing**: Supports 'gratis', 'pago', and 'hibrido' modes
-- **Multi-service fallback**: Attempts multiple premium services in sequence
-- **Hybrid search**: Combines free and premium services intelligently
-- **User context preservation**: Maintains user preferences and authentication
-- **Service discovery**: Automatically detects configured premium services
-- **OAB-specific fallback**: Implements priority-based fallback for OAB searches
+### Unified API Router (Escavador-First)
+The central orchestrator implementing a streamlined tiered access strategy:
+- **Escavador-first priority**: Escavador service is always attempted first as the primary foundation
+- **Conditional premium integration**: Premium services are only attempted if user has configured them and mode requires additional services
+- **Simplified fallback logic**: Reduced complexity compared to previous multi-tier fallback system
+- **User context preservation**: Maintains user preferences and authentication throughout the streamlined process
+- **Service discovery**: Automatically detects configured premium services when needed
+- **Mode-aware execution**: Differentiates between gratis, pago, and hibrido modes with simplified logic
 
-### Free Service Adapter (DataJud)
-Implements robust integration with the CNJ DataJud API:
-- **Multi-tribunal search**: Queries 13 different Brazilian courts
-- **Advanced rate limiting**: Implements 400ms delay between requests
-- **Intelligent retry logic**: Handles 429 and 5xx errors with exponential backoff
-- **Multiple search strategies**: Supports process numbers, OAB numbers, and textual searches
-- **Response normalization**: Extracts and transforms relevant fields consistently
-- **OAB-specific strategies**: Implements multiple query strategies for OAB searches
+### Primary Service Adapter (Escavador)
+Implements robust integration with the Escavador legal research platform:
+- **Bearer token authentication**: Uses Authorization: Bearer token pattern for secure API access
+- **Dual search capabilities**: Supports both process number searches and OAB (Brazilian Bar Association) searches
+- **Process linkage**: Returns all CNJ numbers linked to OAB registrations
+- **Timeout handling**: Implements 30-second timeout for OAB searches and 15-second timeout for process searches
+- **Standardized response format**: Extracts and transforms relevant fields consistently across all searches
+- **API key validation**: Returns null when API key is not configured, preventing service attempts
 
 ### Premium Service Adapters
 Four specialized premium service adapters providing commercial legal database access:
+
+#### Jusbrasil API Adapter
+- **Comprehensive legal database**: Connects to Jusbrasil's extensive legal repository
+- **Advanced OAB monitoring**: Implements full OAB monitoring workflow with registration and asynchronous collection
+- **Structured response format**: Returns standardized legal case information with CNJ numbers
+- **Server-level API key support**: Supports both user-level and server-level configuration
+- **Async collection handling**: Manages cases where process collection is still ongoing
+
+#### DataJud API Adapter
+- **CNJ DataJud integration**: Connects to the official CNJ DataJud API for Brazilian court data
+- **Multi-tribunal search**: Queries 30 different Brazilian courts and tribunals
+- **Advanced rate limiting**: Implements 400ms delay between requests to prevent API abuse
+- **Intelligent tribunal detection**: Uses CNJ number analysis to target specific tribunals for faster searches
+- **Multiple search strategies**: Supports process numbers, OAB numbers, and textual searches
+- **Server-level API key support**: Uses DATAJUD_API_KEY environment variable for authentication
+- **Enhanced OAB processing**: Implements sophisticated OAB search strategies with tribunal-specific optimizations
+
+#### Digesto API Adapter
+- **Legislative database integration**: Connects to Digesto's legal database
+- **API key management**: Uses DIGESTO_API_KEY environment variable
+- **Future-ready implementation**: Contains TODO comments for real endpoint integration
 
 #### Custom API Adapter
 - **Flexible query support**: Accepts string or structured query objects
 - **Environment-based configuration**: Uses TJ_API_KEY for authentication
 - **Extensible architecture**: Designed for integration with any custom tribunal API
 - **Silent failure handling**: Returns null when API key is not configured
-
-#### Digesto API Adapter
-- **Legislative database integration**: Connects to Digesto's legal database
-- **Brazilian legal framework**: Specializes in legislation and jurisprudence
-- **API key management**: Uses DIGESTO_API_KEY environment variable
-- **Future-ready implementation**: Contains TODO comments for real endpoint integration
-
-#### Escavador API Adapter
-- **Legal research platform**: Integrates with Escavador's legal database
-- **Academic and legal content**: Specializes in scholarly and legal materials
-- **Bearer token authentication**: Uses Authorization: Bearer token pattern
-- **Real-time search capabilities**: Designed for dynamic legal research
-- **Server-level API key support**: Supports both user-level and server-level configuration
-- **Enhanced OAB search**: Provides comprehensive OAB number search functionality
-
-#### Jusbrasil API Adapter
-- **Comprehensive legal database**: Connects to Jusbrasil's extensive legal repository
-- **Brazilian legal ecosystem**: Covers all aspects of Brazilian law
-- **Enterprise-grade integration**: Designed for production legal database access
-- **Structured response format**: Returns standardized legal case information
-- **Server-level API key support**: Supports both user-level and server-level configuration
-- **Advanced OAB monitoring**: Implements full OAB monitoring workflow with registration
 
 ### Authentication and Authorization
 JWT-based authentication system with enhanced security features:
@@ -172,43 +172,36 @@ JWT-based authentication system with enhanced security features:
 - **Session management**: Automatic last login tracking and user session validation
 
 **Section sources**
-- [apiRouter.js:13-73](file://apiRouter.js#L13-L73)
-- [datajud.js:1-260](file://services/datajud.js#L1-L260)
-- [custom.js:1-26](file://services/custom.js#L1-L26)
-- [digesto.js:1-25](file://services/digesto.js#L1-L25)
-- [escavador.js:1-28](file://services/escavador.js#L1-L28)
-- [jusbrasil.js:1-39](file://services/jusbrasil.js#L1-L39)
+- [apiRouter.js:13-55](file://apiRouter.js#L13-L55)
+- [services/escavador.js:1-108](file://services/escavador.js#L1-L108)
+- [services/jusbrasil.js:1-197](file://services/jusbrasil.js#L1-L197)
+- [services/datajud.js:1-305](file://services/datajud.js#L1-L305)
+- [services/digesto.js:1-25](file://services/digesto.js#L1-L25)
+- [services/custom.js:1-26](file://services/custom.js#L1-L26)
 - [auth.js:1-59](file://auth.js#L1-L59)
 
 ## Architecture Overview
-The system now implements a sophisticated layered architecture supporting multiple service modes and intelligent fallback mechanisms:
+The system now implements a streamlined layered architecture with Escavador as the primary foundation:
 
 ```mermaid
 sequenceDiagram
 participant User as "Telegram User"
 participant Bot as "Telegram Bot"
 participant API as "API Router"
-participant Jusbrasil as "Jusbrasil Service"
 participant Escavador as "Escavador Service"
-participant DataJud as "DataJud Service"
+participant Premium as "Premium Services"
 participant DB as "Database"
-User->>Bot : Send OAB number (UF + Number)
+User->>Bot : Send search query
 Bot->>API : consultarProcesso(query, user)
-Note over API : Detects OAB query type
-API->>Jusbrasil : consultarPorOAB(uf, numero)
-Jusbrasil-->>API : Results or null
-alt Jusbrasil success
-API-->>Bot : Normalized results
-else Jusbrasil failure
-API->>Escavador : consultarPorOAB(uf, numero)
+Note over API : Escavador-first priority
+API->>Escavador : consultar(query)
 Escavador-->>API : Results or null
 alt Escavador success
-API-->>Bot : Normalized results
-else Escavador failure
-API->>DataJud : consultarOAB(uf, numero)
-DataJud-->>API : Results or null
-API-->>Bot : Normalized results
-end
+API-->>Bot : Return Escavador results
+else Escavador failure or null
+API->>Premium : buscarPagas(query) (if configured)
+Premium-->>API : Results or null
+API-->>Bot : Return Premium results or null
 end
 Bot->>DB : Store process data
 DB-->>Bot : Confirmation
@@ -216,115 +209,94 @@ Bot-->>User : Process information
 ```
 
 **Diagram sources**
-- [apiRouter.js:26-58](file://apiRouter.js#L26-L58)
-- [jusbrasil.js:31-68](file://services/jusbrasil.js#L31-L68)
-- [escavador.js:29-66](file://services/escavador.js#L29-L66)
-- [datajud.js:153-224](file://services/datajud.js#L153-L224)
+- [apiRouter.js:14-37](file://apiRouter.js#L14-L37)
+- [services/escavador.js:10-25](file://services/escavador.js#L10-L25)
+- [services/jusbrasil.js:10-25](file://services/jusbrasil.js#L10-L25)
+- [services/datajud.js:266-278](file://services/datajud.js#L266-L278)
 
 The architecture ensures:
-- **Intelligent service selection**: Based on user subscription tier and mode preference
-- **Priority-based OAB fallback**: Jusbrasil → Escavador → DataJud with server-level support
-- **Fail-safe fallback chains**: Multiple levels of redundancy and backup services
+- **Escavador-first priority**: Primary service selection with comprehensive coverage
+- **Conditional premium integration**: Premium services only attempted when configured and needed
+- **Fail-safe operation**: System continues functioning even if premium services fail
 - **Consistent response format**: Unified data structure across all service providers
 - **Scalable premium service integration**: Easy addition of new commercial legal databases
 
 ## Detailed Component Analysis
 
-### Enhanced API Router Implementation
-The API router now implements sophisticated multi-mode routing with comprehensive fallback logic:
+### Streamlined API Router Implementation
+The API router now implements a simplified multi-mode routing with Escavador-first priority:
 
 ```mermaid
 flowchart TD
 Start([consultarProcesso Entry]) --> ValidateInput["Validate Input Parameters"]
 ValidateInput --> GetMode["Get User Mode<br/>(gratis/pago/hibrido)"]
 GetMode --> CheckType{"Query Type"}
-CheckType --> |OAB| OABRouting["OAB Priority Routing"]
-CheckType --> |Processo/Nome| NormalRouting["Normal Mode Routing"]
-OABRouting --> JusbrasilFirst["Try Jusbrasil First"]
-JusbrasilFirst --> JusbrasilSuccess{"Jusbrasil Results<br/>Found?"}
-JusbrasilSuccess --> |Yes| ReturnJusbrasil["Return Jusbrasil Data"]
-JusbrasilSuccess --> |No| EscavadorSecond["Try Escavador Second"]
-EscavadorSecond --> EscavadorSuccess{"Escavador Results<br/>Found?"}
+CheckType --> |OAB/Processo| EscavadorFirst["Try Escavador First"]
+CheckType --> |Other| EscavadorFirst
+EscavadorFirst --> EscavadorSuccess{"Escavador Results<br/>Found?"}
 EscavadorSuccess --> |Yes| ReturnEscavador["Return Escavador Data"]
-EscavadorSuccess --> |No| DataJudThird["Try DataJud Third"]
-DataJudThird --> DataJudSuccess{"DataJud Results<br/>Found?"}
-DataJudSuccess --> |Yes| ReturnDataJud["Return DataJud Data"]
-DataJudSuccess --> |No| TryPremium["Try Premium Services"]
-NormalRouting --> ModeCheck{"Mode Selection"}
-ModeCheck --> |'pago'| PaidFirst["Try Premium Services<br/>buscarPagas()"]
-ModeCheck --> |'hibrido'| Hybrid["Try Free First, Then Premium"]
-ModeCheck --> |'gratis'| FreeOnly["Use Only Free Service"]
-PaidFirst --> PaidSuccess{"Premium Results<br/>Found?"}
-PaidSuccess --> |Yes| ReturnPaid["Return Premium Data"]
-PaidSuccess --> |No| FallbackFree["Fallback to Free Service"]
-Hybrid --> TryFree["Try Free Service"]
-TryFree --> FreeFound{"Free Results<br/>Found?"}
-FreeFound --> |Yes| ReturnFree["Return Free Data"]
-FreeFound --> |No| TryPaid["Try Premium Services"]
-TryPaid --> PaidFound{"Premium Results<br/>Found?"}
-PaidFound --> |Yes| ReturnPaid
-PaidFound --> |No| ReturnNull
-ReturnJusbrasil --> End([Exit])
-ReturnEscavador --> End
-ReturnDataJud --> End
-ReturnFree --> End
-ReturnPaid --> End
+EscavadorSuccess --> |No| PremiumCheck{"Premium Services<br/>Configured?"}
+PremiumCheck --> |Yes| PremiumFirst["Try Premium Services<br/>buscarPagas()"]
+PremiumCheck --> |No| ReturnNull["Return Null"]
+PremiumFirst --> PremiumSuccess{"Premium Results<br/>Found?"}
+PremiumSuccess --> |Yes| ReturnPremium["Return Premium Data"]
+PremiumSuccess --> |No| ReturnNull
+ReturnEscavador --> End([Exit])
+ReturnPremium --> End
 ReturnNull --> End
 ```
 
 **Diagram sources**
-- [apiRouter.js:14-108](file://apiRouter.js#L14-L108)
+- [apiRouter.js:14-52](file://apiRouter.js#L14-L52)
 
 Key implementation characteristics:
-- **Mode-aware routing**: Different strategies based on user subscription level
-- **Priority-based OAB fallback**: Jusbrasil → Escavador → DataJud with server-level support
-- **Sequential premium service execution**: Tests services in predefined order
-- **Comprehensive error handling**: Catches and logs errors from all service providers
-- **Response normalization**: Adds service attribution to all results
+- **Escavador-first priority**: Always attempts Escavador service first as the primary foundation
+- **Conditional premium execution**: Premium services are only attempted if user has configured them and mode requires additional services
+- **Simplified error handling**: Reduced complexity compared to previous multi-tier fallback system
+- **Response normalization**: Adds service attribution to all results regardless of source
 
 **Section sources**
-- [apiRouter.js:14-108](file://apiRouter.js#L14-L108)
+- [apiRouter.js:14-52](file://apiRouter.js#L14-L52)
 
-### DataJud Service Adapter Enhancements
-The free service adapter now provides comprehensive multi-tribunal search capabilities:
+### Enhanced Escavador Service Adapter
+The primary service adapter now provides comprehensive legal research platform integration:
 
 ```mermaid
 classDiagram
-class DataJudAdapter {
-+consultarDataJud(query) Promise~Object[]~
-+consultarProcesso(numero) Promise~Object[]~
-+consultarOAB(uf, numero) Promise~Object[]~
--chamarAPI(url, params, apiKey, tentativa) Promise~Object~
--chamarMultiTribunal(params) Promise~Object~
--chamarMultiTribunalOAB(params) Promise~Object~
--extrairDados(hits) Object[]
--aguardarRateLimit() Promise~void~
+class EscavadorAdapter {
++consultar(query) Promise~Object[]|null~
++consultarPorOAB(uf, numero) Promise~Object[]|null~
++consultarPorProcesso(numero) Promise~Object[]|null~
+-nome String
+-gratuito Boolean
+-API_KEY String
+-BASE String
 }
-class MultiTribunalSearch {
--TRIBUNAIS String[]
--TRIBUNAIS_OAB String[]
--buildUrl(tribunal) String
+class OABProcessing {
+-consultarPorOAB(uf, numeroOAB) Promise~Object[]|null~
+-processarResultados(items) Object[]
 }
-class AdvancedQueryStrategies {
--strategyA SimpleQueryString
--strategyB MatchPhrase
+class ProcessSearch {
+-consultarPorProcesso(numero) Promise~Object[]|null~
+-extrairDados(processo) Object[]
 }
-DataJudAdapter --> MultiTribunalSearch : "uses"
-DataJudAdapter --> AdvancedQueryStrategies : "implements"
+EscavadorAdapter --> OABProcessing : "uses"
+EscavadorAdapter --> ProcessSearch : "uses"
 ```
 
 **Diagram sources**
-- [datajud.js:96-233](file://services/datajud.js#L96-L233)
+- [services/escavador.js:10-101](file://services/escavador.js#L10-L101)
 
 Implementation details:
-- **13 Brazilian court integration**: Supports TJSP, TJRJ, TJMG, TJBA, TJPR, TJRS, TJSC, TJDF, TJES, TJGO, TJPE, TJCE, and TRFs
-- **Advanced OAB search strategies**: Multiple query approaches for OAB number searches with tribunal-specific optimizations
-- **Intelligent pagination**: Handles large result sets with up to 5 pages of results
-- **Rate limiting compliance**: Prevents API abuse with 400ms delay between requests
-- **Exponential backoff**: Handles temporary service unavailability gracefully
+- **Bearer token authentication**: Uses Authorization: Bearer token pattern with configurable API key
+- **Dual search capabilities**: Supports both OAB searches and process number searches
+- **Process linkage**: Returns all CNJ numbers linked to OAB registrations
+- **Timeout handling**: Implements 30-second timeout for OAB searches and 15-second timeout for process searches
+- **Standardized response format**: Extracts and transforms relevant fields consistently across all searches
+- **API key validation**: Returns null when API key is not configured, preventing service attempts
 
 **Section sources**
-- [datajud.js:96-233](file://services/datajud.js#L96-L233)
+- [services/escavador.js:10-101](file://services/escavador.js#L10-L101)
 
 ### Premium Service Adapter Pattern
 Each premium service adapter follows a consistent pattern for commercial legal database integration:
@@ -335,35 +307,46 @@ class PremiumServiceAdapter {
 <<Interface>>
 +nome String
 +gratuito Boolean
-+consultar(query) Promise~Object[]~
-}
-class CustomAdapter {
-+API_KEY String
-+consultar(query) Promise~Object|null~
-}
-class DigestoAdapter {
-+API_KEY String
-+consultar(query) Promise~Object|null~
-}
-class EscavadorAdapter {
-+API_KEY String
-+consultar(query) Promise~Object|null~
++consultar(query) Promise~Object[]|null~
 }
 class JusbrasilAdapter {
 +API_KEY String
-+consultar(query) Promise~Object|null~
++consultar(query) Promise~Object[]|null~
++consultarPorOAB(uf, numero) Promise~Object[]|null~
++buscarOABMonitorada(uf, numero) Promise~Object|null~
++cadastrarOAB(uf, numero) Promise~Object|null~
++listarProcessosPorOAB(oabId) Promise~Object[]|null~
 }
-PremiumServiceAdapter <|-- CustomAdapter
-PremiumServiceAdapter <|-- DigestoAdapter
-PremiumServiceAdapter <|-- EscavadorAdapter
+class DataJudAdapter {
++DATAJUD_API_KEY String
++consultar(query) Promise~Object[]|null~
++consultarProcesso(numero) Promise~Object[]|null~
++consultarOAB(uf, numeroOAB) Promise~Object[]|null~
+-extrairTribunalCNJ(numeroProcesso) String|null~
+-chamarMultiTribunal(params) Promise~Object|null~
+-chamarMultiTribunalOAB(params) Promise~Object|null~
+-extrairDados(hits) Object[]
+-aguardarRateLimit() Promise~void~
+}
+class DigestoAdapter {
++API_KEY String
++consultar(query) Promise~Object[]|null~
+}
+class CustomAdapter {
++API_KEY String
++consultar(query) Promise~Object[]|null~
+}
 PremiumServiceAdapter <|-- JusbrasilAdapter
+PremiumServiceAdapter <|-- DataJudAdapter
+PremiumServiceAdapter <|-- DigestoAdapter
+PremiumServiceAdapter <|-- CustomAdapter
 ```
 
 **Diagram sources**
-- [custom.js:21-25](file://services/custom.js#L21-L25)
-- [digesto.js:20-24](file://services/digesto.js#L20-L24)
-- [escavador.js:23-27](file://services/escavador.js#L23-L27)
-- [jusbrasil.js:34-38](file://services/jusbrasil.js#L34-L38)
+- [services/jusbrasil.js:10-196](file://services/jusbrasil.js#L10-L196)
+- [services/datajud.js:10-304](file://services/datajud.js#L10-L304)
+- [services/digesto.js:5-24](file://services/digesto.js#L5-L24)
+- [services/custom.js:7-25](file://services/custom.js#L7-L25)
 
 Common implementation characteristics:
 - **Environment-based configuration**: Uses dedicated API key environment variables
@@ -372,10 +355,10 @@ Common implementation characteristics:
 - **Future-ready architecture**: Contains TODO comments for real endpoint integration
 
 **Section sources**
-- [custom.js:1-26](file://services/custom.js#L1-L26)
-- [digesto.js:1-25](file://services/digesto.js#L1-L25)
-- [escavador.js:1-28](file://services/escavador.js#L1-L28)
-- [jusbrasil.js:1-39](file://services/jusbrasil.js#L1-L39)
+- [services/jusbrasil.js:10-196](file://services/jusbrasil.js#L10-L196)
+- [services/datajud.js:10-304](file://services/datajud.js#L10-L304)
+- [services/digesto.js:5-24](file://services/digesto.js#L5-L24)
+- [services/custom.js:7-25](file://services/custom.js#L7-L25)
 
 ### Enhanced Authentication and Authorization System
 The system now supports multi-role access control with comprehensive user management:
@@ -412,7 +395,7 @@ Security features:
 
 **Section sources**
 - [auth.js:1-59](file://auth.js#L1-L59)
-- [server.js:25-241](file://server.js#L25-L241)
+- [server.js:25-326](file://server.js#L25-L326)
 
 ### Advanced Background Monitoring System
 The worker component now supports multi-tenant operation with enhanced caching:
@@ -453,7 +436,7 @@ Monitoring features:
 - **Scalable design**: Handles large numbers of users and processes efficiently
 
 **Section sources**
-- [worker.js:1-74](file://worker.js#L1-74)
+- [worker.js:1-74](file://worker.js#L1-L74)
 
 ## Premium Service Ecosystem
 The system now supports a comprehensive ecosystem of premium legal database services, each designed for specific legal research needs:
@@ -463,13 +446,13 @@ Each premium service follows a standardized configuration pattern:
 
 | Service | Environment Variable | Authentication Method | Primary Use Case |
 |---------|---------------------|----------------------|------------------|
-| Custom | `TJ_API_KEY` | API Key Header | Custom tribunal APIs |
-| Digesto | `DIGESTO_API_KEY` | API Key Header | Legislative database |
-| Escavador | `ESCAVADOR_API_KEY` | Bearer Token | Legal research platform |
 | Jusbrasil | `JUSBRASIL_API_KEY` | Bearer Token | Comprehensive legal database |
+| DataJud | `DATAJUD_API_KEY` | APIKey Header | CNJ DataJud API |
+| Digesto | `DIGESTO_API_KEY` | API Key Header | Legislative database |
+| Custom | `TJ_API_KEY` | API Key Header | Custom tribunal APIs |
 
 ### Integration Architecture
-The premium service ecosystem implements a plugin-style architecture:
+The premium service ecosystem implements a streamlined architecture:
 
 ```mermaid
 graph LR
@@ -479,31 +462,31 @@ ENDPOINT["API Endpoints<br/>server.js"]
 ENDPOINT --> REGISTRY
 end
 subgraph "Individual Services"
-CUSTOM["custom.js<br/>Custom Tribunals"]
-DIGESTO["digesto.js<br/>Legislation"]
-ESCAVADOR["escavador.js<br/>Legal Research"]
 JUSBRASIL["jusbrasil.js<br/>Comprehensive Database"]
-ENDPOINT --> CUSTOM
-ENDPOINT --> DIGESTO
-ENDPOINT --> ESCAVADOR
+DATAJUD["datajud.js<br/>CNJ DataJud API"]
+DIGESTO["digesto.js<br/>Legislation"]
+CUSTOM["custom.js<br/>Custom Tribunals"]
 ENDPOINT --> JUSBRASIL
+ENDPOINT --> DATAJUD
+ENDPOINT --> DIGESTO
+ENDPOINT --> CUSTOM
 end
 subgraph "Service Discovery"
 DISCOVERY["Automatic Loading<br/>require() calls"]
 REGISTRY --> DISCOVERY
-DISCOVERY --> CUSTOM
-DISCOVERY --> DIGESTO
-DISCOVERY --> ESCAVADOR
 DISCOVERY --> JUSBRASIL
+DISCOVERY --> DATAJUD
+DISCOVERY --> DIGESTO
+DISCOVERY --> CUSTOM
 end
 ```
 
 **Diagram sources**
 - [apiRouter.js:6-11](file://apiRouter.js#L6-L11)
-- [custom.js:1](file://services/custom.js#L1)
-- [digesto.js:1](file://services/digesto.js#L1)
-- [escavador.js:1](file://services/escavador.js#L1)
-- [jusbrasil.js:1](file://services/jusbrasil.js#L1)
+- [services/jusbrasil.js:1](file://services/jusbrasil.js#L1)
+- [services/datajud.js:1](file://services/datajud.js#L1)
+- [services/digesto.js:1](file://services/digesto.js#L1)
+- [services/custom.js:1](file://services/custom.js#L1)
 
 ### Service Integration Guidelines
 To add a new premium service provider:
@@ -516,10 +499,10 @@ To add a new premium service provider:
 
 **Section sources**
 - [apiRouter.js:3-11](file://apiRouter.js#L3-L11)
-- [custom.js:1-26](file://services/custom.js#L1-L26)
-- [digesto.js:1-25](file://services/digesto.js#L1-L25)
-- [escavador.js:1-28](file://services/escavador.js#L1-L28)
-- [jusbrasil.js:1-39](file://services/jusbrasil.js#L1-L39)
+- [services/jusbrasil.js:1-197](file://services/jusbrasil.js#L1-L197)
+- [services/datajud.js:1-305](file://services/datajud.js#L1-L305)
+- [services/digesto.js:1-25](file://services/digesto.js#L1-L25)
+- [services/custom.js:1-26](file://services/custom.js#L1-L26)
 
 ## Multi-Tenant Search Capabilities
 The system now supports sophisticated multi-tenant search operations with tenant-aware service selection:
@@ -563,7 +546,7 @@ SearchQuery --> SearchResult : "generates"
 - [botManager.js:91-97](file://botManager.js#L91-L97)
 
 ### Multi-Tenant Service Selection
-The system applies tenant-specific service selection logic:
+The system applies tenant-specific service selection logic with Escavador-first priority:
 
 ```mermaid
 flowchart TD
@@ -571,17 +554,17 @@ Tenant["Tenant Context<br/>userId, modo, apiKey"] --> Mode{"User Mode"}
 Mode --> |'pago'| PaidTenant["Premium-Only Tenant"]
 Mode --> |'hibrido'| HybridTenant["Hybrid Tenant"]
 Mode --> |'gratis'| FreeTenant["Free-Only Tenant"]
-PaidTenant --> PaidServices["Premium Services<br/>Jusbrasil, Escavador, Digesto, Custom"]
-HybridTenant --> HybridStrategy["Hybrid Strategy<br/>Free First, Then Premium"]
-FreeTenant --> FreeServices["Free Services Only<br/>DataJud"]
+PaidTenant --> PaidServices["Premium Services<br/>Jusbrasil, DataJud, Digesto, Custom"]
+HybridTenant --> HybridStrategy["Hybrid Strategy<br/>Escavador First, Then Premium"]
+FreeTenant --> EscavadorOnly["Escavador Only<br/>Primary Service"]
 PaidServices --> Result["Unified Results"]
 HybridStrategy --> Result
-FreeServices --> Result
+EscavadorOnly --> Result
 Result --> Normalize["Normalize Results<br/>Add Service Attribution"]
 ```
 
 **Diagram sources**
-- [apiRouter.js:24-52](file://apiRouter.js#L24-L52)
+- [apiRouter.js:21-37](file://apiRouter.js#L21-L37)
 
 ### Multi-Tenant Monitoring
 Background workers operate independently per tenant:
@@ -605,7 +588,7 @@ Note over Worker,Tenant : Each tenant processed independently
 - [worker.js:17-65](file://worker.js#L17-L65)
 
 **Section sources**
-- [apiRouter.js:14-55](file://apiRouter.js#L14-L55)
+- [apiRouter.js:14-37](file://apiRouter.js#L14-L37)
 - [worker.js:17-65](file://worker.js#L17-L65)
 - [botManager.js:91-146](file://botManager.js#L91-L146)
 
@@ -636,10 +619,10 @@ All service adapters must return results in this consistent format:
 | `tribunal` | String | Court/tribunal name | "Tribunal de Justiça de São Paulo" |
 | `classe` | String | Legal class | "Ação Civil" |
 | `data` | String | Last update timestamp | "2024-01-15T10:30:00Z" |
-| `fonte` | String | Service source attribution | "DataJud (CNJ)" |
+| `fonte` | String | Service source attribution | "Escavador" |
 | `grau` | String | Court level | "1º Grau" |
 | `orgaoJulgador` | String | Court organ | "Vara Cível" |
-| `_score` | Number | Search relevance score | 12.5 |
+| `_score` | Number | Search relevance score | null |
 
 ### Error Handling and Fallback
 Service adapters implement consistent error handling patterns:
@@ -662,62 +645,48 @@ ReturnResults --> End
 ```
 
 **Diagram sources**
-- [custom.js:7-18](file://services/custom.js#L7-L18)
-- [digesto.js:5-17](file://services/digesto.js#L5-L17)
-- [escavador.js:6-20](file://services/escavador.js#L6-L20)
-- [jusbrasil.js:6-31](file://services/jusbrasil.js#L6-L31)
+- [services/jusbrasil.js:7-14](file://services/jusbrasil.js#L7-L14)
+- [services/datajud.js:80-85](file://services/datajud.js#L80-L85)
+- [services/digesto.js:5-7](file://services/digesto.js#L5-L7)
+- [services/custom.js:7-9](file://services/custom.js#L7-L9)
 
 **Section sources**
-- [custom.js:21-25](file://services/custom.js#L21-L25)
-- [digesto.js:20-24](file://services/digesto.js#L20-L24)
-- [escavador.js:23-27](file://services/escavador.js#L23-L27)
-- [jusbrasil.js:34-38](file://services/jusbrasil.js#L34-L38)
+- [services/jusbrasil.js:10-196](file://services/jusbrasil.js#L10-L196)
+- [services/datajud.js:10-304](file://services/datajud.js#L10-L304)
+- [services/digesto.js:5-24](file://services/digesto.js#L5-L24)
+- [services/custom.js:7-25](file://services/custom.js#L7-L25)
 
-## OAB Search Fallback Mechanism
-**Updated**: The system now implements a sophisticated OAB (Brazilian Bar Association) search fallback mechanism with priority-based service selection and enhanced error handling.
+## Escavador-First Architecture
+**Updated**: The system now implements a comprehensive Escavador-first architecture that prioritizes Escavador as the primary service foundation, with premium services as optional enhancements.
 
-### Priority-Based Fallback Strategy
-The OAB search follows a strict priority order to maximize success rates:
+### Escavador-First Priority Strategy
+The system follows a strict priority order with Escavador as the foundation:
 
 ```mermaid
 flowchart TD
-OABQuery["OAB Query Detected"] --> Jusbrasil["Jusbrasil Service"]
-Jusbrasil --> JusbrasilCheck{"API Key Available?"}
-JusbrasilCheck --> |Yes| JusbrasilCall["Call Jusbrasil OAB Endpoint"]
-JusbrasilCheck --> |No| EscavadorSkip["Skip Jusbrasil (API Key Missing)"]
-JusbrasilCall --> JusbrasilSuccess{"Results Found?"}
-JusbrasilSuccess --> |Yes| ReturnJusbrasil["Return Jusbrasil Results"]
-JusbrasilSuccess --> |No| Escavador["Escavador Service"]
+Query["User Query"] --> Escavador["Escavador Service"]
 Escavador --> EscavadorCheck{"API Key Available?"}
-EscavadorCheck --> |Yes| EscavadorCall["Call Escavador OAB Endpoint"]
-EscavadorCheck --> |No| DataJudSkip["Skip Escavador (API Key Missing)"]
+EscavadorCheck --> |Yes| EscavadorCall["Call Escavador API"]
+EscavadorCheck --> |No| PremiumSkip["Skip Premium (API Key Missing)"]
 EscavadorCall --> EscavadorSuccess{"Results Found?"}
 EscavadorSuccess --> |Yes| ReturnEscavador["Return Escavador Results"]
-EscavadorSuccess --> |No| DataJud["DataJud Service"]
-DataJud --> DataJudCall["Call DataJud OAB Search"]
-DataJudCall --> DataJudSuccess{"Results Found?"}
-DataJudSuccess --> |Yes| ReturnDataJud["Return DataJud Results"]
-DataJudSuccess --> |No| PremiumCheck{"Premium Services Available?"}
+EscavadorSuccess --> |No| PremiumCheck{"Premium Services<br/>Configured?"}
 PremiumCheck --> |Yes| PremiumCall["Call Premium Services"]
 PremiumCheck --> |No| ReturnNull["Return Null"]
 PremiumCall --> PremiumSuccess{"Results Found?"}
 PremiumSuccess --> |Yes| ReturnPremium["Return Premium Results"]
 PremiumSuccess --> |No| ReturnNull
-ReturnJusbrasil --> End["End"]
-ReturnEscavador --> End
-ReturnDataJud --> End
+ReturnEscavador --> End["End"]
 ReturnPremium --> End
 ReturnNull --> End
 ```
 
 **Diagram sources**
-- [apiRouter.js:26-58](file://apiRouter.js#L26-L58)
-- [jusbrasil.js:10-25](file://services/jusbrasil.js#L10-L25)
-- [escavador.js:10-25](file://services/escavador.js#L10-L25)
-- [datajud.js:153-224](file://services/datajud.js#L153-L224)
+- [apiRouter.js:21-37](file://apiRouter.js#L21-L37)
+- [services/escavador.js:11-14](file://services/escavador.js#L11-L14)
 
 ### Enhanced Error Handling and User Feedback
-The system provides comprehensive error handling and user feedback for OAB searches:
+The system provides comprehensive error handling and user feedback for Escavador-first operations:
 
 ```mermaid
 sequenceDiagram
@@ -727,7 +696,7 @@ participant API as "API Router"
 participant Escavador as "Escavador Service"
 User->>Bot : /oab SP 12345
 Bot->>API : consultarProcesso(query, user)
-API->>Escavador : consultarPorOAB(SP, 12345)
+API->>Escavador : consultar(query)
 Escavador-->>API : null (API Key Missing)
 API-->>Bot : null
 Bot->>User : "⚠️ OAB não encontrada.\n\nA busca por OAB funciona através da API Escavador.\nSe a chave ESCAVADOR_API_KEY não estiver configurada no servidor, a busca OAB fica limitada.\n\n🔹 *Alternativa gratuita : * pesquise pelo *número do processo*\n Ex : `0001234-56.2025.8.19.0001`"
@@ -735,48 +704,42 @@ Bot->>User : "⚠️ OAB não encontrada.\n\nA busca por OAB funciona através d
 
 **Diagram sources**
 - [botManager.js:111-119](file://botManager.js#L111-L119)
-- [escavador.js:11-14](file://services/escavador.js#L11-L14)
+- [services/escavador.js:11-14](file://services/escavador.js#L11-L14)
 
-### OAB Search Implementation Details
-Each service implements specialized OAB search functionality:
+### Escavador Service Implementation Details
+Escavador provides comprehensive legal research platform integration:
 
-#### Jusbrasil OAB Implementation
-- **Full monitoring workflow**: Checks existing monitoring, registers new OAB if needed, and lists linked processes
-- **Asynchronous collection**: Handles cases where process collection is still ongoing
-- **Error handling**: Gracefully handles 409 conflicts and other API errors
+#### Dual Search Capabilities
+- **OAB Search**: Uses `/envolvido/processos` endpoint with OAB state and number parameters
+- **Process Search**: Uses `/processos/{numero}` endpoint for direct CNJ number searches
+- **Process linkage**: Returns all CNJ numbers linked to OAB registrations
+- **Timeout handling**: Implements 30-second timeout for OAB searches and 15-second timeout for process searches
 
-#### Escavador OAB Implementation
-- **Direct OAB search**: Uses `/envolvido/processos` endpoint with OAB state and number parameters
-- **Process linkage**: Returns all CNJ numbers linked to the OAB number
-- **Timeout handling**: Implements 30-second timeout for OAB searches
-
-#### DataJud OAB Implementation
-- **Multiple query strategies**: Implements simple_query_string and match_phrase strategies
-- **Tribunal optimization**: Uses only state-level tribunals for faster OAB searches
-- **Pagination support**: Handles large result sets with up to 5 pages
+#### Advanced Response Processing
+- **Standardized format**: Converts Escavador responses to unified format with service attribution
+- **Field extraction**: Extracts relevant fields like numero, tribunal, classe, data, grau, orgaoJulgador
+- **Score handling**: Sets _score to null for Escavador results
 
 **Section sources**
-- [apiRouter.js:26-58](file://apiRouter.js#L26-L58)
-- [jusbrasil.js:31-68](file://services/jusbrasil.js#L31-L68)
-- [escavador.js:29-66](file://services/escavador.js#L29-L66)
-- [datajud.js:153-224](file://services/datajud.js#L153-L224)
+- [apiRouter.js:21-37](file://apiRouter.js#L21-L37)
+- [services/escavador.js:10-101](file://services/escavador.js#L10-L101)
 - [botManager.js:111-119](file://botManager.js#L111-L119)
 
 ## Server-Level API Key Support
-**Updated**: Both Jusbrasil and Escavador services now support server-level API key configuration, providing enhanced flexibility for deployment scenarios.
+**Updated**: Both Jusbrasil and DataJud services now support server-level API key configuration, providing enhanced flexibility for deployment scenarios.
 
 ### Server-Level Configuration Benefits
 - **Deployment flexibility**: API keys can be configured at server level without user-specific configuration
 - **Reduced user complexity**: Users don't need to configure premium service keys
 - **Centralized management**: API keys managed in a single location for all users
-- **Fallback support**: Server-level keys serve as fallback when user keys are unavailable
+- **Enhanced reliability**: Server-level keys ensure consistent service availability
 
 ### Configuration Priority and Fallback
 The system implements a hierarchical configuration approach:
 
 ```mermaid
 flowchart TD
-UserQuery["User OAB Query"] --> CheckUserKey{"User Has API Key?"}
+UserQuery["User Query"] --> CheckUserKey{"User Has API Key?"}
 CheckUserKey --> |Yes| UseUserKey["Use User API Key"]
 CheckUserKey --> |No| CheckServerKey{"Server Has API Key?"}
 CheckServerKey --> |Yes| UseServerKey["Use Server API Key"]
@@ -790,16 +753,16 @@ ServiceSuccess --> |No| NextService
 ```
 
 ### Service-Specific Implementation
-Both Jusbrasil and Escavador services implement the same configuration pattern:
+Both Jusbrasil and DataJud services implement the same configuration pattern:
 
 ```javascript
-// API Key via variável de ambiente: ESCAVADOR_API_KEY
-const API_KEY = process.env.ESCAVADOR_API_KEY || '';
-const BASE = 'https://api.escavador.com/api/v2';
-
 // API Key via variável de ambiente: JUSBRASIL_API_KEY  
 const API_KEY = process.env.JUSBRASIL_API_KEY || '';
 const BASE = 'https://op.digesto.com.br';
+
+// API Key via variável de ambiente: DATAJUD_API_KEY
+const DATAJUD_API_KEY = process.env.DATAJUD_API_KEY || '';
+console.log(`[DataJud] 🔑 API Key do servidor: ${DATAJUD_API_KEY ? 'SIM ✅' : 'NÃO ❌ — vai falhar 401!'}`);
 ```
 
 ### User Experience Impact
@@ -809,9 +772,9 @@ const BASE = 'https://op.digesto.com.br';
 - **Backward compatibility**: Existing user configurations continue to work unchanged
 
 **Section sources**
-- [jusbrasil.js:3-7](file://services/jusbrasil.js#L3-L7)
-- [escavador.js:3-7](file://services/escavador.js#L3-L7)
-- [apiRouter.js:26-58](file://apiRouter.js#L26-L58)
+- [services/jusbrasil.js:3-7](file://services/jusbrasil.js#L3-L7)
+- [services/datajud.js:3-5](file://services/datajud.js#L3-L5)
+- [apiRouter.js:21-37](file://apiRouter.js#L21-L37)
 
 ## Dependency Analysis
 The system maintains clean dependency relationships with enhanced modularity:
@@ -835,23 +798,23 @@ ENDPOINT --> DOTENV
 end
 subgraph "Internal Modules"
 API["apiRouter.js"]
-DATAJUD["services/datajud.js"]
-PREMIUM["services/premium.js"]
-CUSTOM["services/custom.js"]
-DIGESTO["services/digesto.js"]
 ESCAVADOR["services/escavador.js"]
 JUSBRASIL["services/jusbrasil.js"]
+DATAJUD["services/datajud.js"]
+DIGESTO["services/digesto.js"]
+CUSTOM["services/custom.js"]
+PREMIUM["services/premium.js"]
 AUTH["auth.js"]
 SERVER["server.js"]
 WORKER["worker.js"]
 BOT["botManager.js"]
 PARSER["parser.js"]
 ENDPOINT --> API
-API --> DATAJUD
-API --> CUSTOM
-API --> DIGESTO
 API --> ESCAVADOR
 API --> JUSBRASIL
+API --> DATAJUD
+API --> DIGESTO
+API --> CUSTOM
 SERVER --> AUTH
 WORKER --> API
 BOT --> API
@@ -859,6 +822,8 @@ PARSER --> BOT
 SERVER --> PG
 WORKER --> PG
 BOT --> PG
+ESCAVADOR --> AXIOS
+JUSBRASIL --> AXIOS
 DATAJUD --> AXIOS
 AUTH --> JWT
 AUTH --> BCrypt
@@ -869,12 +834,12 @@ ENDPOINT --> BOT
 ENDPOINT --> AUTH
 ENDPOINT --> SERVER
 ENDPOINT --> API
-ENDPOINT --> DATAJUD
-ENDPOINT --> PREMIUM
-ENDPOINT --> CUSTOM
-ENDPOINT --> DIGESTO
 ENDPOINT --> ESCAVADOR
 ENDPOINT --> JUSBRASIL
+ENDPOINT --> DATAJUD
+ENDPOINT --> DIGESTO
+ENDPOINT --> CUSTOM
+ENDPOINT --> PREMIUM
 ENDPOINT --> AUTH
 ENDPOINT --> SERVER
 ENDPOINT --> WORKER
@@ -885,15 +850,16 @@ ENDPOINT --> PARSER
 **Diagram sources**
 - [package.json:11-19](file://package.json#L11-L19)
 - [apiRouter.js:1](file://apiRouter.js#L1)
-- [datajud.js:1](file://services/datajud.js#L1)
-- [custom.js:1](file://services/custom.js#L1)
-- [digesto.js:1](file://services/digesto.js#L1)
-- [escavador.js:1](file://services/escavador.js#L1)
-- [jusbrasil.js:1](file://services/jusbrasil.js#L1)
+- [services/escavador.js:1](file://services/escavador.js#L1)
+- [services/jusbrasil.js:1](file://services/jusbrasil.js#L1)
+- [services/datajud.js:1](file://services/datajud.js#L1)
+- [services/digesto.js:1](file://services/digesto.js#L1)
+- [services/custom.js:1](file://services/custom.js#L1)
+- [services/premium.js:1](file://services/premium.js#L1)
 - [auth.js:1-3](file://auth.js#L1-L3)
 
 Dependency characteristics:
-- **Modular architecture**: Clear separation between service types
+- **Modular architecture**: Clear separation between service types with Escavador as primary
 - **Environment-based configuration**: All external API keys managed via environment variables
 - **Standardized interfaces**: Consistent patterns across all service adapters
 - **Extensible design**: Easy addition of new service providers
@@ -944,6 +910,11 @@ The system implements comprehensive performance optimization strategies across a
 **Solution**: Verify API key format and expiration; check service-specific authentication requirements
 **Detection**: Premium services implement silent failure mode when API key is missing
 
+#### Escavador Service Issues
+**Problem**: Escavador service not responding despite configuration
+**Solution**: Verify ESCAVADOR_API_KEY environment variable is properly set and exported
+**Detection**: Escavador service returns null when API key is missing
+
 #### Rate Limiting Issues
 **Problem**: API responses blocked by rate limits
 **Solution**: Implement exponential backoff and retry logic; monitor service response codes
@@ -959,11 +930,6 @@ The system implements comprehensive performance optimization strategies across a
 **Solution**: Implement connection retry and health checks; monitor connection pool statistics
 **Monitoring**: Track connection pool statistics and tenant-specific database operations
 
-#### OAB Search Failures
-**Problem**: OAB searches failing even with API keys configured
-**Solution**: Check server-level API key configuration; verify service-specific endpoints are working
-**Detection**: Enhanced logging shows which services are being skipped due to missing API keys
-
 #### Server-Level API Key Issues
 **Problem**: Server-level API keys not taking effect
 **Solution**: Verify environment variables are properly exported to the process environment
@@ -978,16 +944,16 @@ The system follows consistent error handling patterns across all service layers:
 - **Service-specific error handling**: Each service implements appropriate error recovery
 
 **Section sources**
-- [custom.js:8-18](file://services/custom.js#L8-L18)
-- [digesto.js:6-17](file://services/digesto.js#L6-L17)
-- [escavador.js:7-20](file://services/escavador.js#L7-L20)
-- [jusbrasil.js:7-31](file://services/jusbrasil.js#L7-L31)
-- [datajud.js:76-94](file://services/datajud.js#L76-L94)
+- [services/jusbrasil.js:7-14](file://services/jusbrasil.js#L7-L14)
+- [services/datajud.js:80-85](file://services/datajud.js#L80-L85)
+- [services/digesto.js:5-7](file://services/digesto.js#L5-L7)
+- [services/custom.js:7-9](file://services/custom.js#L7-L9)
+- [services/escavador.js:11-14](file://services/escavador.js#L11-L14)
 
 ## Conclusion
-The API integration layer now provides a comprehensive, extensible foundation for judicial process monitoring with sophisticated multi-tenant capabilities. The enhanced tiered access strategy supports three distinct service modes: free DataJud service, premium paid services, and hybrid mode combining both approaches. The modular architecture allows for easy integration of additional legal database providers while maintaining consistent behavior and error handling.
+The API integration layer now provides a comprehensive, streamlined foundation for judicial process monitoring with Escavador as the primary service foundation. The enhanced tiered access strategy supports three distinct service modes: free Escavador service, premium paid services, and hybrid mode combining both approaches. The modular architecture allows for easy integration of additional legal database providers while maintaining consistent behavior and error handling.
 
-**Updated**: The new OAB search fallback mechanism (Jusbrasil → Escavador → DataJud) with server-level API key support significantly improves reliability and user experience. The priority-based fallback ensures maximum success rates for OAB searches while providing comprehensive error handling and user feedback. Server-level API key support enhances deployment flexibility and reduces user configuration complexity.
+**Updated**: The new Escavador-first architecture significantly improves reliability and user experience by prioritizing the most comprehensive legal research platform as the primary service foundation. The simplified service selection logic (Escavador → Premium) with server-level API key support enhances deployment flexibility and reduces user configuration complexity. The priority-based approach ensures maximum success rates for searches while providing comprehensive error handling and user feedback.
 
 The system's design emphasizes reliability, performance, scalability, and maintainability, making it suitable for enterprise-level legal database integration with support for multiple service providers and tenant contexts.
 
@@ -1016,7 +982,7 @@ To add a new external API provider:
 ### Configuration Requirements
 - **Environment variables**: `JWT_SECRET`, `PORT`, individual service API keys
 - **Database**: PostgreSQL with configured credentials and migration support
-- **External APIs**: DataJud endpoint, premium API credentials for each service
+- **External APIs**: Escavador API, premium API credentials for each service
 - **Telegram**: Bot tokens and webhook configurations for multi-tenant operation
 - **Service keys**: Individual API keys for each premium service provider
 - **Server-level keys**: Optional server-level API keys for enhanced reliability

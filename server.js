@@ -22,26 +22,34 @@ function limparTelegramId(raw) {
     return id;
 }
 
-// Registro de novo usuário
+// Registro de novo usuário — começa BLOQUEADO até admin aprovar pagamento
 app.post('/auth/registro', async (req, res) => {
-    const { email, senha, bot_token, api_key, modo } = req.body;
+    const { email, senha, bot_token, api_key, modo, comprovante } = req.body;
     const telegram_id = limparTelegramId(req.body.telegram_id);
 
     try {
         const senhaHash = await hashSenha(senha);
 
         const result = await pool.query(
-            "INSERT INTO usuarios (email, senha, telegram_id, bot_token, api_key, modo) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id",
-            [email, senhaHash, telegram_id, bot_token, api_key, modo || 'gratis']
+            "INSERT INTO usuarios (email, senha, telegram_id, bot_token, api_key, modo, ativo, comprovante) VALUES ($1,$2,$3,$4,$5,$6,false,$7) RETURNING id",
+            [email, senhaHash, telegram_id, bot_token, api_key, modo || 'gratis', comprovante || null]
         );
 
         const userId = result.rows[0].id;
 
-        if (bot_token) {
-            await iniciarBot(bot_token, userId);
-        }
+        // Log de novo cadastro pendente
+        console.log(`[REGISTRO] Novo cadastro pendente: ${email} ${comprovante ? '| Comprovante: ' + comprovante : ''}`);
 
-        res.json({ success: true, id: userId, message: "Usuário criado com sucesso" });
+        res.json({
+            success: true,
+            id: userId,
+            message: "Cadastro recebido! Envie o comprovante de pagamento. Seu acesso será liberado após aprovação.",
+            pagamento: {
+                chave: 'santossilvac990@gmail.com',
+                banco: 'PagBank',
+                titular: 'Celio Santos Silva'
+            }
+        });
     } catch (err) {
         if (err.code === '23505') {
             return res.status(400).json({ error: "Email já cadastrado" });
@@ -82,7 +90,9 @@ app.post('/auth/login', async (req, res) => {
             user: {
                 id: user.id,
                 email: user.email,
-                tipo: user.tipo
+                tipo: user.tipo,
+                ativo: user.ativo,
+                status_pagamento: user.status_pagamento
             }
         });
     } catch (err) {
@@ -92,15 +102,16 @@ app.post('/auth/login', async (req, res) => {
 
 // Cadastrar usuário (protegido - apenas admin)
 app.post('/usuario', authMiddleware, adminMiddleware, async (req, res) => {
-    const { bot_token, api_key, modo, email, senha } = req.body;
+    const { bot_token, api_key, modo, email, senha, tipo: tipoBody } = req.body;
     const telegram_id = limparTelegramId(req.body.telegram_id);
 
     try {
         const senhaHash = senha ? await hashSenha(senha) : null;
+        const tipo = tipoBody || 'cliente';
 
         const result = await pool.query(
-            "INSERT INTO usuarios (email, senha, telegram_id, bot_token, api_key, modo) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id",
-            [email, senhaHash, telegram_id, bot_token, api_key, modo || 'gratis']
+            "INSERT INTO usuarios (email, senha, telegram_id, bot_token, api_key, modo, tipo, ativo, status_pagamento) VALUES ($1,$2,$3,$4,$5,$6,$7,true,'aprovado') RETURNING id",
+            [email, senhaHash, telegram_id, bot_token, api_key, modo || 'gratis', tipo]
         );
 
         const userId = result.rows[0].id;
@@ -138,6 +149,7 @@ app.get('/usuarios', authMiddleware, adminMiddleware, async (req, res) => {
     try {
         const data = await pool.query(
             `SELECT u.id, u.email, u.tipo, u.telegram_id, u.modo, u.ativo, u.criado_em, u.ultimo_login,
+                    u.comprovante, u.status_pagamento,
                     COUNT(p.id) as total_processos
              FROM usuarios u
              LEFT JOIN processos p ON p.usuario_id = u.id
@@ -152,7 +164,7 @@ app.get('/usuarios', authMiddleware, adminMiddleware, async (req, res) => {
 
 // Bloquear/desbloquear usuário (apenas admin)
 app.put('/usuario/:id', authMiddleware, adminMiddleware, async (req, res) => {
-    const { ativo, modo, tipo } = req.body;
+    const { ativo, modo, tipo, status_pagamento } = req.body;
     const userId = req.params.id;
 
     try {
@@ -171,6 +183,10 @@ app.put('/usuario/:id', authMiddleware, adminMiddleware, async (req, res) => {
         if (tipo !== undefined) {
             sets.push(`tipo = $${idx++}`);
             params.push(tipo);
+        }
+        if (status_pagamento !== undefined) {
+            sets.push(`status_pagamento = $${idx++}`);
+            params.push(status_pagamento);
         }
 
         if (sets.length === 0) {
@@ -193,7 +209,7 @@ app.put('/usuario/:id', authMiddleware, adminMiddleware, async (req, res) => {
 app.get('/auth/me', authMiddleware, async (req, res) => {
     try {
         const result = await pool.query(
-            "SELECT id, email, tipo, telegram_id, bot_token, api_key, modo, criado_em FROM usuarios WHERE id = $1",
+            "SELECT id, email, tipo, telegram_id, bot_token, api_key, modo, ativo, comprovante, status_pagamento, criado_em FROM usuarios WHERE id = $1",
             [req.user.id]
         );
         res.json(result.rows[0]);
@@ -235,6 +251,22 @@ app.put('/auth/config', authMiddleware, async (req, res) => {
         }
 
         res.json({ success: true, message: "Configuração atualizada e bot iniciado!" });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Enviar comprovante de pagamento (usuário logado)
+app.put('/auth/comprovante', authMiddleware, async (req, res) => {
+    const { comprovante } = req.body;
+
+    try {
+        await pool.query(
+            "UPDATE usuarios SET comprovante=$1, status_pagamento='pendente' WHERE id=$2",
+            [comprovante, req.user.id]
+        );
+
+        res.json({ success: true, message: "Comprovante enviado! Aguarde a aprovação do administrador." });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -300,6 +332,14 @@ async function criarTabelas() {
         } catch (e) {
             // Coluna já existe
         }
+
+        // Migração: campos de pagamento
+        try {
+            await pool.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS comprovante TEXT`);
+        } catch (e) { /* Coluna já existe */ }
+        try {
+            await pool.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS status_pagamento VARCHAR(20) DEFAULT 'pendente'`);
+        } catch (e) { /* Coluna já existe */ }
     } catch (err) {
         console.error('Erro ao criar tabelas:', err.message);
     }

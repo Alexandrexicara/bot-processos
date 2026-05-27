@@ -76,6 +76,26 @@ body {
     font-size: 14px;
 }
 
+/* Caixa de pagamento no cadastro */
+.pagamento-box {
+    background: #1a1a1a;
+    border: 1px solid #FFD700;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 12px 0;
+    font-size: 13px;
+    line-height: 1.8;
+    color: #ccc;
+}
+
+.pagamento-box strong {
+    color: #FFD700;
+}
+
+.pagamento-box b {
+    color: #fff;
+}
+
 /* Navbar */
 .navbar {
     background: #1a1a1a;

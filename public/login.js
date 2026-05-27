@@ -34,6 +34,10 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         const data = await res.json();
 
         if (data.success) {
+            if (data.user && data.user.ativo === false) {
+                erroEl.innerHTML = '⏳ Sua conta ainda <b>não foi aprovada</b>.<br>O administrador está verificando seu pagamento.<br><br>💳 Chave Pix: <b>santossilvac990@gmail.com</b><br>Titular: Celio Santos Silva';
+                return;
+            }
             localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data.user));
             window.location.href = '/painel.html';
@@ -71,16 +75,24 @@ document.getElementById('registro-form').addEventListener('submit', async (e) =>
                 telegram_id: document.getElementById('reg-telegram').value,
                 bot_token: document.getElementById('reg-bot').value,
                 api_key: document.getElementById('reg-api').value,
-                modo: document.getElementById('reg-modo').value
+                modo: document.getElementById('reg-modo').value,
+                comprovante: document.getElementById('reg-comprovante').value
             })
         });
 
         const data = await res.json();
 
         if (data.success) {
-            sucessoEl.textContent = 'Cadastro realizado! Faça login.';
+            let msg = '✅ Cadastro recebido!\n\n';
+            msg += 'Seu acesso será liberado APÓS confirmação do pagamento.\n\n';
+            if (data.pagamento) {
+                msg += '💳 Pague via Pix:\n';
+                msg += 'Chave: ' + data.pagamento.chave + '\n';
+                msg += 'Banco: ' + data.pagamento.banco + '\n';
+                msg += 'Titular: ' + data.pagamento.titular;
+            }
+            sucessoEl.innerHTML = msg.replace(/\n/g, '<br>');
             document.getElementById('registro-form').reset();
-            setTimeout(() => mostrarTab('login'), 1500);
         } else {
             erroEl.textContent = data.error || 'Erro no cadastro';
         }

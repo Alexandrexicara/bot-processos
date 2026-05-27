@@ -89,9 +89,15 @@ async function carregarUsuarios() {
         dados.forEach(u => {
             const criado = u.criado_em ? new Date(u.criado_em).toLocaleString() : '-';
             const ultimoLogin = u.ultimo_login ? new Date(u.ultimo_login).toLocaleString() : 'Nunca';
-            const ativo = u.ativo !== false; // null/true = ativo
+            const ativo = u.ativo !== false;
             const statusCor = ativo ? '#39FF14' : '#ff4444';
             const statusTexto = ativo ? '🟢 Ativo' : '🔴 Bloqueado';
+
+            // Status do pagamento
+            const pgStatus = u.status_pagamento || 'pendente';
+            const pgCor = pgStatus === 'aprovado' ? '#39FF14' : pgStatus === 'rejeitado' ? '#ff4444' : '#FFD700';
+            const pgTexto = pgStatus === 'aprovado' ? '✅ Pago' : pgStatus === 'rejeitado' ? '❌ Negado' : '⏳ Pendente';
+            const comprovante = u.comprovante ? `<br><small style="color:#888;">📎 ${u.comprovante.substring(0,50)}</small>` : '';
 
             tbody.innerHTML += `
             <tr>
@@ -99,14 +105,33 @@ async function carregarUsuarios() {
                 <td><span class="badge ${u.tipo}">${u.tipo}</span></td>
                 <td>${u.modo}</td>
                 <td>${u.total_processos || 0}</td>
+                <td><span style="color:${pgCor}; font-weight:bold;">${pgTexto}${comprovante}</span></td>
                 <td><span style="color:${statusCor}; font-weight:bold;">${statusTexto}</span></td>
                 <td style="font-size:12px; color:#aaa;">${ultimoLogin}</td>
-                <td>
-                    <button onclick="toggleUsuario(${u.id}, ${!ativo})" 
-                            style="padding:5px 10px; font-size:11px; border-radius:4px; cursor:pointer;
-                                   background:${ativo ? '#ff4444' : '#39FF14'}; color:#fff; border:none;">
-                        ${ativo ? '🔒 Bloquear' : '🔓 Desbloquear'}
+                <td style="display:flex; gap:4px; flex-wrap:wrap;">
+                    ${pgStatus === 'pendente' ? `
+                    <button onclick="aprovarPagamento(${u.id})" 
+                            style="padding:4px 8px; font-size:10px; border-radius:4px; cursor:pointer;
+                                   background:#39FF14; color:#000; border:none;">
+                        ✅ Aprovar
                     </button>
+                    <button onclick="rejeitarPagamento(${u.id})" 
+                            style="padding:4px 8px; font-size:10px; border-radius:4px; cursor:pointer;
+                                   background:#ff4444; color:#fff; border:none;">
+                        ❌ Rejeitar
+                    </button>` : ''}
+                    ${ativo ? 
+                        `<button onclick="toggleUsuario(${u.id}, false)" 
+                                style="padding:4px 8px; font-size:10px; border-radius:4px; cursor:pointer;
+                                       background:#ff4444; color:#fff; border:none;">
+                            🔒 Bloquear
+                        </button>` :
+                        `<button onclick="toggleUsuario(${u.id}, true)" 
+                                style="padding:4px 8px; font-size:10px; border-radius:4px; cursor:pointer;
+                                       background:#39FF14; color:#000; border:none;">
+                            🔓 Liberar
+                        </button>`
+                    }
                 </td>
             </tr>`;
         });
@@ -157,6 +182,7 @@ document.getElementById('form-usuario')?.addEventListener('submit', async (e) =>
             body: JSON.stringify({
                 email: document.getElementById('cad-email').value,
                 senha: document.getElementById('cad-senha').value,
+                tipo: document.getElementById('cad-tipo').value,
                 telegram_id: document.getElementById('cad-telegram').value,
                 bot_token: document.getElementById('cad-bot').value,
                 api_key: document.getElementById('cad-api').value,
@@ -243,9 +269,61 @@ async function toggleUsuario(userId, novoAtivo) {
         const data = await res.json();
 
         if (data.success) {
-            carregarUsuarios(); // recarrega a tabela
+            carregarUsuarios();
         } else {
             alert('Erro: ' + (data.error || 'Falha ao atualizar'));
+        }
+    } catch (err) {
+        alert('Erro de conexão');
+    }
+}
+
+// Aprovar pagamento (admin)
+async function aprovarPagamento(userId) {
+    if (!confirm('Confirmar pagamento e liberar acesso deste usuário?')) return;
+
+    try {
+        const res = await fetch('/usuario/' + userId, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ ativo: true, status_pagamento: 'aprovado' })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            carregarUsuarios();
+        } else {
+            alert('Erro: ' + (data.error || 'Falha ao aprovar'));
+        }
+    } catch (err) {
+        alert('Erro de conexão');
+    }
+}
+
+// Rejeitar pagamento (admin)
+async function rejeitarPagamento(userId) {
+    if (!confirm('Rejeitar pagamento e manter usuário bloqueado?')) return;
+
+    try {
+        const res = await fetch('/usuario/' + userId, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ status_pagamento: 'rejeitado' })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            carregarUsuarios();
+        } else {
+            alert('Erro: ' + (data.error || 'Falha ao rejeitar'));
         }
     } catch (err) {
         alert('Erro de conexão');
