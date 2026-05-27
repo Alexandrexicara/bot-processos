@@ -22,11 +22,12 @@
 
 ## Update Summary
 **Changes Made**
-- Updated to reflect major architectural shift: Escavador now serves as the 'base principal' (main foundation) of the platform, replacing the previous complex fallback system
-- Simplified service selection logic in apiRouter.js to prioritize Escavador first, then optionally user-configured paid services in paid or hybrid modes
-- Enhanced DataJud service documentation to highlight new CNJ processing capabilities and server-level API key support
-- Updated premium service ecosystem documentation to reflect the new simplified architecture
-- Revised fallback mechanisms to focus on Escavador-first approach with optional premium service integration
+- Enhanced Escavador API integration with dedicated search endpoints for CPF, CNPJ, and name-based queries
+- Added unified `consultarPorDocumento` function for document-based searches
+- Improved error handling with comprehensive timeout management and rate limiting
+- Updated service selection logic to prioritize Escavador-first architecture with enhanced document search capabilities
+- Enhanced parser.js to support CPF, CNPJ, and name-based search types
+- Updated botManager.js to handle new document-based search results
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -38,17 +39,18 @@
 7. [Multi-Tenant Search Capabilities](#multi-tenant-search-capabilities)
 8. [Service Adapter Pattern](#service-adapter-pattern)
 9. [Escavador-First Architecture](#escavador-first-architecture)
-10. [Server-Level API Key Support](#server-level-api-key-support)
-11. [Dependency Analysis](#dependency-analysis)
-12. [Performance Considerations](#performance-considerations)
-13. [Troubleshooting Guide](#troubleshooting-guide)
-14. [Conclusion](#conclusion)
-15. [Appendices](#appendices)
+10. [Enhanced Document-Based Search](#enhanced-document-based-search)
+11. [Server-Level API Key Support](#server-level-api-key-support)
+12. [Dependency Analysis](#dependency-analysis)
+13. [Performance Considerations](#performance-considerations)
+14. [Troubleshooting Guide](#troubleshooting-guide)
+15. [Conclusion](#conclusion)
+16. [Appendices](#appendices)
 
 ## Introduction
 This document describes the API integration layer that powers the judicial process monitoring system. The system has evolved to support a comprehensive tiered access strategy with a simplified architecture where Escavador serves as the primary foundation, with optional premium services as secondary enhancements. The unified API interface abstracts external legal database access, request/response handling, and error management while providing flexible service selection based on user subscription tiers and configuration.
 
-**Updated**: The new architecture prioritizes Escavador as the base principal service, with premium services serving as optional enhancements for users who configure them. This simplifies the service selection logic while maintaining comprehensive multi-tenant capabilities.
+**Updated**: The new architecture prioritizes Escavador as the base principal service, with premium services serving as optional enhancements for users who configure them. The system now features enhanced document-based search capabilities with dedicated endpoints for CPF, CNPJ, and name-based queries, providing comprehensive legal research functionality.
 
 ## Project Structure
 The system now operates as a streamlined legal database integration platform with a focused service architecture centered around Escavador:
@@ -100,14 +102,14 @@ WORKER --> DB
 
 **Diagram sources**
 - [apiRouter.js:1-55](file://apiRouter.js#L1-L55)
-- [services/escavador.js:1-108](file://services/escavador.js#L1-L108)
+- [services/escavador.js:1-164](file://services/escavador.js#L1-L164)
 - [services/jusbrasil.js:1-197](file://services/jusbrasil.js#L1-L197)
 - [services/datajud.js:1-305](file://services/datajud.js#L1-L305)
 - [services/digesto.js:1-25](file://services/digesto.js#L1-L25)
 - [services/custom.js:1-26](file://services/custom.js#L1-L26)
 - [services/premium.js:1-12](file://services/premium.js#L1-L12)
 - [worker.js:1-74](file://worker.js#L1-74)
-- [botManager.js:1-190](file://botManager.js#L1-L190)
+- [botManager.js:1-195](file://botManager.js#L1-L195)
 
 **Section sources**
 - [README.md:1-56](file://README.md#L1-L56)
@@ -125,12 +127,13 @@ The central orchestrator implementing a streamlined tiered access strategy:
 - **Service discovery**: Automatically detects configured premium services when needed
 - **Mode-aware execution**: Differentiates between gratis, pago, and hibrido modes with simplified logic
 
-### Primary Service Adapter (Escavador)
+### Primary Service Adapter (Enhanced Escavador)
 Implements robust integration with the Escavador legal research platform:
 - **Bearer token authentication**: Uses Authorization: Bearer token pattern for secure API access
-- **Dual search capabilities**: Supports both process number searches and OAB (Brazilian Bar Association) searches
+- **Multi-document search capabilities**: Supports process number searches, OAB searches, and document-based searches (CPF, CNPJ, nome)
+- **Unified document search**: Provides centralized `consultarPorDocumento` function for CPF, CNPJ, and name-based queries
 - **Process linkage**: Returns all CNJ numbers linked to OAB registrations
-- **Timeout handling**: Implements 30-second timeout for OAB searches and 15-second timeout for process searches
+- **Enhanced timeout handling**: Implements 30-second timeout for document searches and 15-second timeout for process searches
 - **Standardized response format**: Extracts and transforms relevant fields consistently across all searches
 - **API key validation**: Returns null when API key is not configured, preventing service attempts
 
@@ -173,7 +176,7 @@ JWT-based authentication system with enhanced security features:
 
 **Section sources**
 - [apiRouter.js:13-55](file://apiRouter.js#L13-L55)
-- [services/escavador.js:1-108](file://services/escavador.js#L1-L108)
+- [services/escavador.js:1-164](file://services/escavador.js#L1-L164)
 - [services/jusbrasil.js:1-197](file://services/jusbrasil.js#L1-L197)
 - [services/datajud.js:1-305](file://services/datajud.js#L1-L305)
 - [services/digesto.js:1-25](file://services/digesto.js#L1-L25)
@@ -232,7 +235,7 @@ Start([consultarProcesso Entry]) --> ValidateInput["Validate Input Parameters"]
 ValidateInput --> GetMode["Get User Mode<br/>(gratis/pago/hibrido)"]
 GetMode --> CheckType{"Query Type"}
 CheckType --> |OAB/Processo| EscavadorFirst["Try Escavador First"]
-CheckType --> |Other| EscavadorFirst
+CheckType --> |CPF/CNPJ/Nome| EscavadorFirst
 EscavadorFirst --> EscavadorSuccess{"Escavador Results<br/>Found?"}
 EscavadorSuccess --> |Yes| ReturnEscavador["Return Escavador Data"]
 EscavadorSuccess --> |No| PremiumCheck{"Premium Services<br/>Configured?"}
@@ -259,7 +262,7 @@ Key implementation characteristics:
 - [apiRouter.js:14-52](file://apiRouter.js#L14-L52)
 
 ### Enhanced Escavador Service Adapter
-The primary service adapter now provides comprehensive legal research platform integration:
+The primary service adapter now provides comprehensive legal research platform integration with enhanced document-based search capabilities:
 
 ```mermaid
 classDiagram
@@ -267,10 +270,15 @@ class EscavadorAdapter {
 +consultar(query) Promise~Object[]|null~
 +consultarPorOAB(uf, numero) Promise~Object[]|null~
 +consultarPorProcesso(numero) Promise~Object[]|null~
++consultarPorDocumento(tipo, valor) Promise~Object[]|null~
 -nome String
 -gratuito Boolean
 -API_KEY String
 -BASE String
+}
+class DocumentSearch {
+-consultarPorDocumento(tipo, valor) Promise~Object[]|null~
+-extrairDados(processo) Object[]
 }
 class OABProcessing {
 -consultarPorOAB(uf, numeroOAB) Promise~Object[]|null~
@@ -280,23 +288,25 @@ class ProcessSearch {
 -consultarPorProcesso(numero) Promise~Object[]|null~
 -extrairDados(processo) Object[]
 }
+EscavadorAdapter --> DocumentSearch : "uses"
 EscavadorAdapter --> OABProcessing : "uses"
 EscavadorAdapter --> ProcessSearch : "uses"
 ```
 
 **Diagram sources**
-- [services/escavador.js:10-101](file://services/escavador.js#L10-L101)
+- [services/escavador.js:10-163](file://services/escavador.js#L10-L163)
 
 Implementation details:
 - **Bearer token authentication**: Uses Authorization: Bearer token pattern with configurable API key
-- **Dual search capabilities**: Supports both OAB searches and process number searches
+- **Multi-document search capabilities**: Supports OAB searches, process number searches, and document-based searches (CPF, CNPJ, nome)
+- **Unified document search**: Centralized `consultarPorDocumento` function handles CPF, CNPJ, and name-based queries
 - **Process linkage**: Returns all CNJ numbers linked to OAB registrations
-- **Timeout handling**: Implements 30-second timeout for OAB searches and 15-second timeout for process searches
+- **Enhanced timeout handling**: Implements 30-second timeout for document searches and 15-second timeout for process searches
 - **Standardized response format**: Extracts and transforms relevant fields consistently across all searches
 - **API key validation**: Returns null when API key is not configured, preventing service attempts
 
 **Section sources**
-- [services/escavador.js:10-101](file://services/escavador.js#L10-L101)
+- [services/escavador.js:10-163](file://services/escavador.js#L10-L163)
 
 ### Premium Service Adapter Pattern
 Each premium service adapter follows a consistent pattern for commercial legal database integration:
@@ -707,13 +717,20 @@ Bot->>User : "⚠️ OAB não encontrada.\n\nA busca por OAB funciona através d
 - [services/escavador.js:11-14](file://services/escavador.js#L11-L14)
 
 ### Escavador Service Implementation Details
-Escavador provides comprehensive legal research platform integration:
+Escavador provides comprehensive legal research platform integration with enhanced document-based search capabilities:
 
-#### Dual Search Capabilities
+#### Multi-Document Search Capabilities
 - **OAB Search**: Uses `/envolvido/processos` endpoint with OAB state and number parameters
 - **Process Search**: Uses `/processos/{numero}` endpoint for direct CNJ number searches
+- **Document Search**: Uses `/envolvido/processos` endpoint with CPF, CNPJ, or nome parameters
 - **Process linkage**: Returns all CNJ numbers linked to OAB registrations
-- **Timeout handling**: Implements 30-second timeout for OAB searches and 15-second timeout for process searches
+- **Enhanced timeout handling**: Implements 30-second timeout for document searches and 15-second timeout for process searches
+
+#### Unified Document Search Functionality
+- **CPF Search**: Dedicated endpoint for CPF-based legal case searches
+- **CNPJ Search**: Dedicated endpoint for CNPJ-based legal case searches
+- **Name Search**: Text-based search for legal cases involving specific names
+- **Centralized processing**: Single `consultarPorDocumento` function handles all document types
 
 #### Advanced Response Processing
 - **Standardized format**: Converts Escavador responses to unified format with service attribution
@@ -722,8 +739,62 @@ Escavador provides comprehensive legal research platform integration:
 
 **Section sources**
 - [apiRouter.js:21-37](file://apiRouter.js#L21-L37)
-- [services/escavador.js:10-101](file://services/escavador.js#L10-L101)
+- [services/escavador.js:10-163](file://services/escavador.js#L10-L163)
 - [botManager.js:111-119](file://botManager.js#L111-L119)
+
+## Enhanced Document-Based Search
+**Updated**: The system now features comprehensive document-based search capabilities with dedicated endpoints for CPF, CNPJ, and name-based queries.
+
+### Document Search Architecture
+The Escavador service now implements a unified document search system:
+
+```mermaid
+flowchart TD
+DocumentQuery["Document Query<br/>{ tipo, numero, texto }"] --> CheckType{"Document Type"}
+CheckType --> |'cpf'| CPFSearch["CPF Search<br/>consultarPorDocumento('cpf', cpf)"]
+CheckType --> |'cnpj'| CNPJSearch["CNPJ Search<br/>consultarPorDocumento('cnpj', cnpj)"]
+CheckType --> |'nome'| NameSearch["Name Search<br/>consultarPorDocumento('nome', nome)"]
+CPFSearch --> DocumentEndpoint["/envolvido/processos?cpf=..."]
+CNPJSearch --> DocumentEndpoint
+NameSearch --> DocumentEndpoint
+DocumentEndpoint --> ProcessResults["Process Results<br/>Extract CNJ Numbers"]
+ProcessResults --> Standardize["Standardize Response Format"]
+Standardize --> ReturnResults["Return Unified Results"]
+```
+
+**Diagram sources**
+- [services/escavador.js:119-157](file://services/escavador.js#L119-L157)
+
+### Document Search Implementation Details
+The `consultarPorDocumento` function provides centralized document-based search functionality:
+
+#### CPF Search Capability
+- **Endpoint**: `/envolvido/processos?cpf={cpf}`
+- **Validation**: Accepts 11-digit CPF numbers
+- **Results**: Returns up to 15 legal cases linked to the CPF
+- **Processing**: Extracts CNJ numbers, tribunal information, and case details
+
+#### CNPJ Search Capability
+- **Endpoint**: `/envolvido/processos?cnpj={cnpj}`
+- **Validation**: Accepts 14-digit CNPJ numbers
+- **Results**: Returns up to 15 legal cases linked to the CNPJ
+- **Processing**: Extracts CNJ numbers, tribunal information, and case details
+
+#### Name Search Capability
+- **Endpoint**: `/envolvido/processos?nome={nome}`
+- **Validation**: Accepts text strings with minimum 3 characters
+- **Results**: Returns up to 15 legal cases containing the name
+- **Processing**: Extracts CNJ numbers, tribunal information, and case details
+
+#### Enhanced Error Handling
+- **Timeout Management**: 30-second timeout for document searches
+- **Error Logging**: Comprehensive error logging with status codes and messages
+- **Graceful Degradation**: Returns null on service errors, allowing fallback to premium services
+- **Result Normalization**: Consistent response format across all document types
+
+**Section sources**
+- [services/escavador.js:119-157](file://services/escavador.js#L119-L157)
+- [parser.js:47-67](file://parser.js#L47-L67)
 
 ## Server-Level API Key Support
 **Updated**: Both Jusbrasil and DataJud services now support server-level API key configuration, providing enhanced flexibility for deployment scenarios.
@@ -896,6 +967,12 @@ The system implements comprehensive performance optimization strategies across a
 - **Service load balancing**: Premium services distributed across multiple providers
 - **Queue-based processing**: Background tasks processed in scheduled intervals
 
+### Enhanced Timeout Management
+- **Document search timeouts**: 30-second timeout for CPF, CNPJ, and name-based searches
+- **Process search timeouts**: 15-second timeout for direct CNJ number searches
+- **OAB search timeouts**: 30-second timeout for OAB-based searches
+- **Error handling**: Comprehensive timeout error handling with fallback mechanisms
+
 ## Troubleshooting Guide
 
 ### Common Issues and Solutions
@@ -914,6 +991,11 @@ The system implements comprehensive performance optimization strategies across a
 **Problem**: Escavador service not responding despite configuration
 **Solution**: Verify ESCAVADOR_API_KEY environment variable is properly set and exported
 **Detection**: Escavador service returns null when API key is missing
+
+#### Document Search Issues
+**Problem**: Document-based searches (CPF, CNPJ, nome) failing or returning empty results
+**Solution**: Verify document format (11 digits for CPF, 14 digits for CNPJ, minimum 3 characters for names)
+**Detection**: Escavador service implements comprehensive error logging for document search failures
 
 #### Rate Limiting Issues
 **Problem**: API responses blocked by rate limits
@@ -953,7 +1035,7 @@ The system follows consistent error handling patterns across all service layers:
 ## Conclusion
 The API integration layer now provides a comprehensive, streamlined foundation for judicial process monitoring with Escavador as the primary service foundation. The enhanced tiered access strategy supports three distinct service modes: free Escavador service, premium paid services, and hybrid mode combining both approaches. The modular architecture allows for easy integration of additional legal database providers while maintaining consistent behavior and error handling.
 
-**Updated**: The new Escavador-first architecture significantly improves reliability and user experience by prioritizing the most comprehensive legal research platform as the primary service foundation. The simplified service selection logic (Escavador → Premium) with server-level API key support enhances deployment flexibility and reduces user configuration complexity. The priority-based approach ensures maximum success rates for searches while providing comprehensive error handling and user feedback.
+**Updated**: The new Escavador-first architecture significantly improves reliability and user experience by prioritizing the most comprehensive legal research platform as the primary service foundation. The enhanced document-based search capabilities with dedicated CPF, CNPJ, and name-based query endpoints provide comprehensive legal research functionality. The unified `consultarPorDocumento` function streamlines document-based searches while maintaining backward compatibility. The simplified service selection logic (Escavador → Premium) with server-level API key support enhances deployment flexibility and reduces user configuration complexity. The priority-based approach ensures maximum success rates for searches while providing comprehensive error handling and user feedback.
 
 The system's design emphasizes reliability, performance, scalability, and maintainability, making it suitable for enterprise-level legal database integration with support for multiple service providers and tenant contexts.
 
@@ -994,3 +1076,18 @@ To add a new external API provider:
 - **Monitoring**: Implement tenant-specific metrics and alerting
 - **Security**: Maintain proper access controls and data isolation between tenants
 - **API key management**: Implement hierarchical configuration for optimal reliability
+
+### Document Search Types
+The system supports four distinct document-based search types:
+
+| Type | Format | Example | Purpose |
+|------|--------|---------|---------|
+| `cpf` | 11 digits | `12345678901` | Individual CPF-based legal case searches |
+| `cnpj` | 14 digits | `12345678901234` | Corporate CNPJ-based legal case searches |
+| `nome` | 3+ characters | `João da Silva` | Text-based legal case searches by name |
+| `oab` | UF + number | `SP 12345` | OAB-based legal case searches |
+
+**Section sources**
+- [parser.js:47-67](file://parser.js#L47-L67)
+- [services/escavador.js:119-157](file://services/escavador.js#L119-L157)
+- [botManager.js:115-134](file://botManager.js#L115-L134)
