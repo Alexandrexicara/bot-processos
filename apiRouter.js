@@ -12,22 +12,37 @@ async function consultarProcesso(query, user) {
 
     console.log(`[apiRouter] Modo: ${modo}, Tipo: ${q.tipo}, Query:`, q.original || q.numero || q.texto);
 
-    // 1. ESCAVADOR — base PRINCIPAL da plataforma
-    console.log('[apiRouter] ⚡ Escavador (base principal)...');
-    const esc = await escavador.consultar(q);
-    if (esc && esc.length > 0) {
-        esc.forEach(r => r.fonte = escavador.nome);
-        return esc;
+    try {
+        console.log('[apiRouter] ⚡ Consultando Escavador...');
+        const esc = await escavador.consultar(q);
+
+        console.log('[apiRouter] 📦 RESPOSTA:', JSON.stringify(esc).substring(0, 1000));
+
+        // Array com resultados
+        if (Array.isArray(esc) && esc.length > 0) {
+            esc.forEach(r => r.fonte = escavador.nome);
+            return esc;
+        }
+
+        // Objeto único
+        if (esc && typeof esc === 'object' && !Array.isArray(esc) && esc.numero) {
+            esc.fonte = escavador.nome;
+            return [esc];
+        }
+
+        console.log('[apiRouter] ⚠️ Nenhum resultado do Escavador');
+    } catch (err) {
+        console.error('[apiRouter] ❌ Erro:', err.response?.data || err.message);
     }
 
-    // 2. APIs extra do utilizador (se modo pago/híbrido e tiver chave própria)
+    // APIs extra do utilizador (modo pago/híbrido)
     if (modo === 'pago' || modo === 'hibrido') {
-        console.log('[apiRouter] ⚡ Tentando APIs extra do utilizador...');
+        console.log('[apiRouter] ⚡ Tentando APIs extra...');
         const extra = await buscarPagas(q);
         if (extra && extra.length > 0) return extra;
     }
 
-    return null;
+    return [];
 }
 
 async function buscarPagas(query) {

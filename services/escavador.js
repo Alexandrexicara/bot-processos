@@ -39,7 +39,7 @@ function formatar(p) {
 async function consultar(query) {
     if (!API_KEY) {
         console.log('[Escavador] ⏭️ Pulando — API Key não configurada');
-        return null;
+        return [];
     }
 
     // OAB
@@ -75,8 +75,8 @@ async function consultarPorOAB(uf, numeroOAB) {
         return processos.map(formatar);
 
     } catch (err) {
-        console.error(`[Escavador] ❌ OAB: ${err.response?.status} ${err.message}`);
-        return null;
+        console.error(`[Escavador] ❌ OAB: ${err.response?.status}`, err.response?.data || err.message);
+        return [];
     }
 }
 
@@ -117,8 +117,8 @@ async function consultarPorProcesso(numero) {
             console.log('[Escavador] ⚠️ Processo não encontrado');
             return [];
         }
-        console.error(`[Escavador] ❌ Processo: ${err.response?.status} ${err.message}`);
-        return null;
+        console.error(`[Escavador] ❌ Processo: ${err.response?.status}`, err.response?.data || err.message);
+        return [];
     }
 
     return [];
@@ -146,8 +146,8 @@ async function consultarPorDocumento(tipo, valor) {
         return processos.map(formatar);
 
     } catch (err) {
-        console.error(`[Escavador] ❌ ${tipo}: ${err.response?.status} ${err.message}`);
-        return null;
+        console.error(`[Escavador] ❌ ${tipo}: ${err.response?.status}`, err.response?.data || err.message);
+        return [];
     }
 }
 
