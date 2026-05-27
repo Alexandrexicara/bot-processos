@@ -27,9 +27,13 @@ async function iniciarBot(token, userId) {
 
     // Registra webhook se em produção (rota /webhook/:userId no server.js)
     if (BASE_URL) {
-        const webhookUrl = `${BASE_URL}/webhook/${userId}`;
-        await bot.setWebHook(webhookUrl);
-        console.log(`[BotManager] 🌐 Webhook registrado: ${webhookUrl}`);
+        try {
+            const webhookUrl = `${BASE_URL}/webhook/${userId}`;
+            await bot.setWebHook(webhookUrl);
+            console.log(`[BotManager] 🌐 Webhook registrado: ${webhookUrl}`);
+        } catch (err) {
+            console.error(`[BotManager] ❌ Falha ao registar webhook userId=${userId}:`, err.message);
+        }
     } else {
         console.log(`[BotManager] 📡 Polling local ativo`);
     }
@@ -209,10 +213,14 @@ function formatarResultado(dados) {
 }
 
 async function carregarBots() {
-    const res = await pool.query("SELECT * FROM usuarios WHERE bot_token IS NOT NULL");
+    const res = await pool.query("SELECT * FROM usuarios WHERE bot_token IS NOT NULL AND bot_token != ''");
 
     for (let user of res.rows) {
-        iniciarBot(user.bot_token, user.id);
+        try {
+            await iniciarBot(user.bot_token, user.id);
+        } catch (err) {
+            console.error(`[BotManager] Erro ao iniciar bot userId=${user.id}:`, err.message);
+        }
     }
 }
 
