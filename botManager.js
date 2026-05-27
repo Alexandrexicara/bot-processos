@@ -4,12 +4,36 @@ const { consultarProcesso } = require('./apiRouter');
 const { parseMensagem } = require('./parser');
 
 const bots = {};
+const BASE_URL = process.env.BASE_URL || ''; // ex: https://meuapp.onrender.com
 
 async function iniciarBot(token, userId) {
 
-    if (bots[token]) return;
+    if (!token || !token.trim()) {
+        console.log(`[BotManager] ⚠️ Token vazio para userId=${userId}, ignorando`);
+        return;
+    }
+    if (bots[token]) {
+        console.log(`[BotManager] ⚠️ Bot já ativo para token ...${token.slice(-8)}`);
+        return;
+    }
 
-    const bot = new TelegramBot(token, { polling: true });
+    const options = {};
+    if (BASE_URL) {
+        // Produção: webhook (sem conflitos 409)
+        options.webHook = { port: process.env.PORT || 3000 };
+    } else {
+        // Desenvolvimento local: polling
+        options.polling = true;
+    }
+
+    const bot = new TelegramBot(token, options);
+
+    // Registra webhook se em produção
+    if (BASE_URL) {
+        const webhookUrl = `${BASE_URL}/webhook/${userId}`;
+        bot.setWebHook(webhookUrl);
+        console.log(`[BotManager] 🌐 Webhook registrado: ${webhookUrl}`);
+    }
 
     // Comando /start
     bot.onText(/^\/start$/, (msg) => {
@@ -91,6 +115,8 @@ async function iniciarBot(token, userId) {
     });
 
     bots[token] = bot;
+    bot.userId = userId; // guarda userId no bot para webhook
+    console.log(`[BotManager] 🤖 Bot iniciado para userId=${userId}`);
 }
 
 async function processarConsulta(bot, chatId, query, userId) {
@@ -191,4 +217,4 @@ async function carregarBots() {
     }
 }
 
-module.exports = { carregarBots, iniciarBot };
+module.exports = { carregarBots, iniciarBot, bots };

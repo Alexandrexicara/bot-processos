@@ -272,6 +272,21 @@ app.put('/auth/comprovante', authMiddleware, async (req, res) => {
     }
 });
 
+// Webhook Telegram por usuário
+const botsMap = require('./botManager').bots;
+app.post('/webhook/:userId', async (req, res) => {
+    const userId = parseInt(req.params.userId);
+    try {
+        const bot = Object.values(botsMap).find(b => b.userId === userId);
+        if (!bot) return res.sendStatus(404);
+        bot.processUpdate(req.body);
+        res.sendStatus(200);
+    } catch (err) {
+        console.error('[Webhook] Erro:', err.message);
+        res.sendStatus(500);
+    }
+});
+
 app.listen(process.env.PORT, async () => {
     console.log(`Servidor rodando na porta ${process.env.PORT}...`);
     await criarTabelas();
