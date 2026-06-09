@@ -22,11 +22,13 @@
 
 ## Update Summary
 **Changes Made**
-- Enhanced error handling in apiRouter.js now supports both array and single object responses from Escavador API
-- Improved logging and response processing logic with comprehensive type checking
-- Added robust response validation for Escavador service integration
-- Enhanced fallback mechanisms with standardized response processing
-- Streamlined API service architecture focusing on Escavador-first priority
+- Enhanced Escavador service with improved error handling and debugging logs
+- Implemented unified endpoint structure using /busca with q parameter
+- Improved return value consistency with empty arrays instead of null
+- Simplified parameter handling across all search types
+- Enhanced response validation supporting both array and single object responses
+- Added comprehensive logging for debugging and monitoring
+- Streamlined API service architecture with enhanced dual-format support
 
 ## Table of Contents
 1. [Introduction](#introduction)

@@ -1,9 +1,7 @@
 const axios = require('axios');
 
-// API Key via variável de ambiente: ESCAVADOR_API_KEY
 const API_KEY = process.env.ESCAVADOR_API_KEY || '';
-const BASE = 'https://api.escavador.com/api/v1';
-const BASE_V2 = 'https://api.escavador.com/api/v2';
+const BASE = 'https://api.escavador.com/api/v2';
 
 const headers = {
     'Authorization': `Bearer ${API_KEY}`,
@@ -12,15 +10,13 @@ const headers = {
 
 console.log(`[Escavador] 🔑 API Key: ${API_KEY ? 'SIM ✅' : 'NÃO ❌'}`);
 
-// Extrai array de processos da resposta (vários formatos possíveis)
 function extrairProcessos(data) {
     if (!data) return [];
-    console.log(`[Escavador] 📦 RESPOSTA:`, JSON.stringify(data).substring(0, 500));
+    console.log(`[Escavador] 📦 RESPOSTA:`, JSON.stringify(data).substring(0, 600));
     const arr = data?.items || data?.data || data?.resultados || (Array.isArray(data) ? data : []);
     return arr.slice(0, 15);
 }
 
-// Converte processo para formato padronizado
 function formatar(p) {
     return {
         numero: p.numero_cnj || p.numeroProcesso || p.numero || '',
@@ -35,47 +31,42 @@ function formatar(p) {
     };
 }
 
-// query = objeto { tipo, uf, numero, texto, original }
 async function consultar(query) {
-    if (!API_KEY) {
-        console.log('[Escavador] ⏭️ Pulando — API Key não configurada');
-        return [];
-    }
+    if (!API_KEY) { console.log('[Escavador] ⏭️ Sem API Key'); return []; }
 
-    // OAB
     if (query.tipo === 'oab' && query.uf && query.numero) {
-        return consultarPorOAB(query.uf, query.numero);
+        return consultarEnvolvido({ oab_estado: query.uf.toUpperCase(), oab_numero: query.numero });
     }
-
-    // CPF / CNPJ / Nome
-    if ((query.tipo === 'cpf' || query.tipo === 'cnpj' || query.tipo === 'nome') && (query.numero || query.texto)) {
-        return consultarPorDocumento(query.tipo, query.numero || query.texto);
+    if (query.tipo === 'cpf' && query.numero) {
+        return consultarEnvolvido({ cpf: query.numero });
     }
-
-    // Processo
+    if (query.tipo === 'cnpj' && query.numero) {
+        return consultarEnvolvido({ cnpj: query.numero });
+    }
+    if (query.tipo === 'nome' && query.texto) {
+        return consultarEnvolvido({ nome: query.texto });
+    }
     const numero = typeof query === 'string' ? query : (query.numero || query.original);
     if (!numero) return [];
     return consultarPorProcesso(numero);
 }
 
-// ─── OAB ───────────────────────────────────────────
-async function consultarPorOAB(uf, numeroOAB) {
-    console.log(`[Escavador] 🔍 Buscando OAB ${uf}/${numeroOAB}`);
+// ─── Envolvido (OAB/CPF/CNPJ/Nome) ──────────────────
+async function consultarEnvolvido(params) {
+    console.log(`[Escavador] 🔍 Envolvido:`, params);
 
     try {
-        const res = await axios.get(`${BASE}/busca`, {
-            params: { q: `${uf} ${numeroOAB}`, pagina: 1 },
+        const res = await axios.get(`${BASE}/envolvido/processos`, {
+            params,
             headers,
             timeout: 30000
         });
-
-        console.log(`[Escavador] OAB STATUS: ${res.status}`);
-        const processos = extrairProcessos(res.data);
-        console.log(`[Escavador] ✅ ${processos.length} processos (max 15)`);
-        return processos.map(formatar);
-
+        console.log(`[Escavador] STATUS: ${res.status}`);
+        const p = extrairProcessos(res.data);
+        console.log(`[Escavador] ✅ ${p.length} resultados`);
+        return p.map(formatar);
     } catch (err) {
-        console.error('[Escavador] ❌❌❌ ERRO OAB COMPLETO:');
+        console.error('[Escavador] ❌❌❌ ERRO ENVOLVIDO:');
         console.error('   STATUS:', err.response?.status);
         console.error('   DATA:', JSON.stringify(err.response?.data).substring(0, 1000));
         console.error('   MESSAGE:', err.message);
@@ -85,78 +76,26 @@ async function consultarPorOAB(uf, numeroOAB) {
 
 // ─── Processo (CNJ) ────────────────────────────────
 async function consultarPorProcesso(numero) {
-    // Remove máscara: só dígitos
     const limpo = numero.replace(/\D/g, '');
-    console.log(`[Escavador] 🔍 Buscando processo: ${numero} → ${limpo}`);
+    console.log(`[Escavador] 🔍 Processo: ${numero} → ${limpo}`);
 
-    // Tenta V1
     try {
         const res = await axios.get(`${BASE}/processos/${limpo}`, { headers, timeout: 15000 });
-        console.log(`[Escavador] V1 STATUS: ${res.status}`);
-
+        console.log(`[Escavador] STATUS: ${res.status}`);
         const p = res.data;
         if (p && (p.numero_cnj || p.numeroProcesso || p.numero)) {
-            console.log('[Escavador] ✅ Encontrado via V1');
+            console.log('[Escavador] ✅ Encontrado');
             return [formatar(p)];
         }
-        console.log('[Escavador] V1 retornou sem dados válidos');
+        console.log('[Escavador] Sem dados válidos na resposta');
     } catch (err) {
-        console.log(`[Escavador] V1: ${err.response?.status}`);
-    }
-
-    // Tenta V2
-    try {
-        const res = await axios.get(`${BASE_V2}/processos/${limpo}`, { headers, timeout: 15000 });
-        console.log(`[Escavador] V2 STATUS: ${res.status}`);
-
-        const p = res.data;
-        if (p && (p.numero_cnj || p.numeroProcesso || p.numero)) {
-            console.log('[Escavador] ✅ Encontrado via V2');
-            return [formatar(p)];
-        }
-        console.log('[Escavador] V2 retornou sem dados válidos');
-    } catch (err) {
-        if (err.response?.status === 404) {
-            console.log('[Escavador] ⚠️ Processo não encontrado');
-            return [];
-        }
-        console.error('[Escavador] ❌❌❌ ERRO PROCESSO COMPLETO:');
+        console.error('[Escavador] ❌ PROCESSO:');
         console.error('   STATUS:', err.response?.status);
-        console.error('   DATA:', JSON.stringify(err.response?.data).substring(0, 1000));
-        console.error('   MESSAGE:', err.message);
-        return [];
+        console.error('   DATA:', JSON.stringify(err.response?.data).substring(0, 500));
+        if (err.response?.status === 404) return [];
     }
 
     return [];
 }
 
-// ─── CPF / CNPJ / Nome ─────────────────────────────
-async function consultarPorDocumento(tipo, valor) {
-    console.log(`[Escavador] 🔍 Buscando ${tipo}: ${valor}`);
-
-    try {
-        const res = await axios.get(`${BASE}/busca`, {
-            params: { q: valor, pagina: 1 },
-            headers,
-            timeout: 30000
-        });
-
-        console.log(`[Escavador] ${tipo} STATUS: ${res.status}`);
-        const processos = extrairProcessos(res.data);
-        console.log(`[Escavador] ✅ ${processos.length} processos (max 15)`);
-        return processos.map(formatar);
-
-    } catch (err) {
-        console.error(`[Escavador] ❌❌❌ ERRO ${tipo.toUpperCase()} COMPLETO:`);
-        console.error('   STATUS:', err.response?.status);
-        console.error('   DATA:', JSON.stringify(err.response?.data).substring(0, 1000));
-        console.error('   MESSAGE:', err.message);
-        return [];
-    }
-}
-
-module.exports = {
-    nome: 'Escavador',
-    gratuito: false,
-    consultar
-};
+module.exports = { nome: 'Escavador', gratuito: false, consultar };
