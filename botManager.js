@@ -169,12 +169,18 @@ async function processarConsulta(bot, chatId, query, userId) {
         const exibir = lista.slice(0, 15);
 
         for (const dados of exibir) {
-            await pool.query(
-                `INSERT INTO processos (numero, usuario_id, ultimo_status) 
-                 VALUES ($1,$2,$3) 
-                 ON CONFLICT (numero, usuario_id) DO UPDATE SET ultimo_status=$3`,
-                [dados.numero, userId, dados.data]
-            );
+            try {
+                await pool.query(
+                    `INSERT INTO processos (numero, usuario_id, ultimo_status) 
+                     VALUES ($1,$2,$3)`,
+                    [dados.numero, userId, dados.data]
+                );
+            } catch (dbErr) {
+                // Ignora erro de duplicata, apenas loga
+                if (dbErr.code !== '23505') {
+                    console.error('[BotManager] Erro ao salvar processo:', dbErr.message);
+                }
+            }
 
             const mensagem = formatarResultado(dados);
             bot.sendMessage(chatId, mensagem, { parse_mode: 'Markdown' });
