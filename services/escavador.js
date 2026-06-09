@@ -34,30 +34,55 @@ function formatar(p) {
 async function consultar(query) {
     if (!API_KEY) { console.log('[Escavador] ⏭️ Sem API Key'); return []; }
 
+    // OAB → endpoint separado: /advogado/processos
     if (query.tipo === 'oab' && query.uf && query.numero) {
-        return consultarEnvolvido({ oab_estado: query.uf.toUpperCase(), oab_numero: query.numero });
+        return consultarAdvogado(query.uf.toUpperCase(), query.numero);
     }
+    // CPF ou CNPJ → /envolvido/processos?cpf_cnpj=...
     if (query.tipo === 'cpf' && query.numero) {
-        return consultarEnvolvido({ cpf: query.numero });
+        return consultarEnvolvido({ cpf_cnpj: query.numero });
     }
     if (query.tipo === 'cnpj' && query.numero) {
-        return consultarEnvolvido({ cnpj: query.numero });
+        return consultarEnvolvido({ cpf_cnpj: query.numero });
     }
+    // Nome → /envolvido/processos?nome=...
     if (query.tipo === 'nome' && query.texto) {
         return consultarEnvolvido({ nome: query.texto });
     }
+    // Número de processo CNJ → /processos/{numero}
     const numero = typeof query === 'string' ? query : (query.numero || query.original);
     if (!numero) return [];
     return consultarPorProcesso(numero);
 }
 
-// ─── Envolvido (OAB/CPF/CNPJ/Nome) ──────────────────
+// ─── Advogado (OAB) → /advogado/processos ───────────
+async function consultarAdvogado(uf, numero) {
+    console.log(`[Escavador] 🔍 Advogado OAB: ${uf}/${numero}`);
+    try {
+        const res = await axios.get(`${BASE}/advogado/processos`, {
+            params: { oab_estado: uf, oab_numero: numero, limit: 50 },
+            headers,
+            timeout: 30000
+        });
+        console.log(`[Escavador] STATUS: ${res.status}`);
+        const p = extrairProcessos(res.data);
+        console.log(`[Escavador] ✅ ${p.length} resultados`);
+        return p.map(formatar);
+    } catch (err) {
+        console.error('[Escavador] ❌❌❌ ERRO ADVOGADO/OAB:');
+        console.error('   STATUS:', err.response?.status);
+        console.error('   DATA:', JSON.stringify(err.response?.data).substring(0, 1000));
+        console.error('   MESSAGE:', err.message);
+        return [];
+    }
+}
+
+// ─── Envolvido (CPF/CNPJ/Nome) → /envolvido/processos ───
 async function consultarEnvolvido(params) {
     console.log(`[Escavador] 🔍 Envolvido:`, params);
-
     try {
         const res = await axios.get(`${BASE}/envolvido/processos`, {
-            params,
+            params: { ...params, limit: 50 },
             headers,
             timeout: 30000
         });
