@@ -1,7 +1,7 @@
 const escavador = require('./services/escavador');
+const datajud = require('./services/datajud');
 
-// Nenhum serviço extra do servidor — só Escavador como base principal
-// Cada utilizador pode adicionar as suas próprias APIs no painel
+// Serviços extra pagos (vazios — usuário pode adicionar APIs próprias no painel)
 const servicosPagos = [];
 
 // query = { tipo, uf, numero, texto, original } ou string
@@ -12,11 +12,31 @@ async function consultarProcesso(query, user) {
 
     console.log(`[apiRouter] Modo: ${modo}, Tipo: ${q.tipo}, Query:`, q.original || q.numero || q.texto);
 
+    // ── BUSCA POR NÚMERO DE PROCESSO ──────────────────────
+    // DataJud (CNJ oficial) primeiro → cobre TODOS os tribunais
+    if (q.tipo === 'processo' && (q.numero || q.original)) {
+        try {
+            console.log('[apiRouter] ⚡ Consultando DataJud (CNJ)...');
+            const dj = await datajud.consultar(q);
+            console.log('[apiRouter] 📦 DataJud:', JSON.stringify(dj).substring(0, 500));
+            if (Array.isArray(dj) && dj.length > 0) {
+                dj.forEach(r => r.fonte = datajud.nome);
+                return dj;
+            }
+        } catch (err) {
+            console.error('[apiRouter] ❌ Erro DataJud:', err.message);
+        }
+        // Fallback: Escavador para processo
+        console.log('[apiRouter] ⚡ DataJud sem resultado, tentando Escavador...');
+    }
+
+    // ── BUSCA POR OAB / CPF / CNPJ / NOME ────────────────
+    // Escavador primeiro → se falhar, DataJud como fallback
     try {
         console.log('[apiRouter] ⚡ Consultando Escavador...');
         const esc = await escavador.consultar(q);
 
-        console.log('[apiRouter] 📦 RESPOSTA:', JSON.stringify(esc).substring(0, 1000));
+        console.log('[apiRouter] 📦 Escavador:', JSON.stringify(esc).substring(0, 1000));
 
         // Array com resultados
         if (Array.isArray(esc) && esc.length > 0) {
@@ -32,7 +52,21 @@ async function consultarProcesso(query, user) {
 
         console.log('[apiRouter] ⚠️ Nenhum resultado do Escavador');
     } catch (err) {
-        console.error('[apiRouter] ❌ Erro:', err.response?.data || err.message);
+        console.error('[apiRouter] ❌ Erro Escavador:', err.response?.data || err.message);
+    }
+
+    // ── FALLBACK: DataJud para OAB / CPF / CNPJ ──────────
+    if (q.tipo === 'oab' || q.tipo === 'cpf' || q.tipo === 'cnpj') {
+        try {
+            console.log(`[apiRouter] ⚡ Fallback DataJud para ${q.tipo}...`);
+            const dj = await datajud.consultar(q);
+            if (Array.isArray(dj) && dj.length > 0) {
+                dj.forEach(r => r.fonte = datajud.nome);
+                return dj;
+            }
+        } catch (err) {
+            console.error('[apiRouter] ❌ Erro DataJud fallback:', err.message);
+        }
     }
 
     // APIs extra do utilizador (modo pago/híbrido)

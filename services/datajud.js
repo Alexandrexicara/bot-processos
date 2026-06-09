@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 // Chave da API DataJud — nível servidor (.env), NÃO por utilizador
-const DATAJUD_API_KEY = process.env.DATAAJUD_API_KEY || '';
+const DATAJUD_API_KEY = process.env.DATAJUD_API_KEY || '';
 console.log(`[DataJud] 🔑 API Key do servidor: ${DATAJUD_API_KEY ? 'SIM ✅' : 'NÃO ❌ — vai falhar 401!'}`);
 
 // Endpoints por tribunal conforme documentação oficial do CNJ
@@ -51,8 +51,20 @@ function extrairTribunalCNJ(numeroProcesso) {
     return CNJ_PARA_TRIBUNAL[chave] || null;
 }
 
-// Para OAB, só tentamos tribunais estaduais (mais provável e mais rápido)
-const TRIBUNAIS_OAB = ['tjsp', 'tjrj', 'tjmg', 'tjrs', 'tjpr', 'tjba', 'tjsc'];
+// Mapeamento UF → tribunal estadual DataJud
+const UF_PARA_TRIBUNAL = {
+    'SP': 'tjsp', 'RJ': 'tjrj', 'MG': 'tjmg', 'RS': 'tjrs',
+    'PR': 'tjpr', 'BA': 'tjba', 'SC': 'tjsc', 'DF': 'tjdft',
+    'ES': 'tjes', 'GO': 'tjgo', 'PE': 'tjpe', 'CE': 'tjce',
+    'MS': 'tjms', 'MT': 'tjmt', 'PA': 'tjpa', 'AM': 'tjam',
+    'MA': 'tjma', 'PI': 'tjpi', 'RN': 'tjrn', 'PB': 'tjpb',
+    'AL': 'tjal', 'SE': 'tjse', 'TO': 'tjto', 'RO': 'tjro',
+    'AC': 'tjac', 'AP': 'tjap', 'RR': 'tjrr'
+};
+
+// Para OAB, prioriza tribunal do estado + principais tribunais
+const TRIBUNAIS_OAB = ['tjsp', 'tjrj', 'tjmg', 'tjrs', 'tjpr', 'tjba', 'tjsc',
+    'tjdft', 'tjgo', 'tjpe', 'tjce', 'tjms', 'tjmt', 'tjpa'];
 
 // Rate limiting
 let ultimaReq = 0;
@@ -149,16 +161,18 @@ async function _chamarMultiTribunal(params, tribunais) {
 
 // Busca por número de processo — vai DIRETO ao tribunal pelo CNJ
 async function consultarProcesso(numero) {
-    console.log(`[DataJud] 🔍 Buscando processo: ${numero}`);
+    // Remove máscara: DataJud armazena como 20 dígitos sem formatação
+    const limpo = numero.replace(/\D/g, '');
+    console.log(`[DataJud] 🔍 Buscando processo: ${numero} → ${limpo}`);
 
     const params = {
-        query: { match: { numeroProcesso: numero } },
+        query: { match: { numeroProcesso: limpo } },
         size: 10,
         sort: [{ "@timestamp": "desc" }]
     };
 
     // Detecta o tribunal pelo número CNJ para busca direta (1 chamada!)
-    const tribunalCNJ = extrairTribunalCNJ(numero);
+    const tribunalCNJ = extrairTribunalCNJ(limpo);
     if (tribunalCNJ) {
         console.log(`[DataJud] 🎯 Tribunal detectado pelo CNJ: ${tribunalCNJ}`);
         const url = buildUrl(tribunalCNJ);
@@ -192,26 +206,18 @@ async function consultarProcesso(numero) {
 async function consultarOAB(uf, numeroOAB) {
     console.log(`[DataJud] 🔍 Buscando OAB: ${uf} ${numeroOAB}`);
 
-    // Estratégia 1: match nos campos de advogado
-    // O CNJ indexa advogados como texto dentro dos documentos
+    // Prioriza tribunal do estado da OAB primeiro
+    const tribunalPrioritario = UF_PARA_TRIBUNAL[uf.toUpperCase()];
+
+    // Estratégia 1: buscar OAB como texto estruturado
     const estrategias = [
-        // Estratégia A: simple_query_string — mais flexível
         {
             nome: 'simple_query_string',
             query: {
                 simple_query_string: {
-                    query: `"${uf}${numeroOAB}"`,
+                    query: `"${numeroOAB}"`,
                     fields: ["*"],
                     default_operator: "or"
-                }
-            }
-        },
-        // Estratégia B: match_phrase no campo _all
-        {
-            nome: 'match_phrase',
-            query: {
-                match_phrase: {
-                    _all: `${uf}${numeroOAB}`
                 }
             }
         }
@@ -222,37 +228,35 @@ async function consultarOAB(uf, numeroOAB) {
 
         const params = {
             query: est.query,
-            size: 50,
+            size: 15,
             sort: [{ "@timestamp": "desc" }]
         };
 
-        // Vai direto para tribunais estaduais (só 7, mais rápido)
+        // Primeiro: tribunal do estado da OAB (busca direta!)
+        if (tribunalPrioritario) {
+            console.log(`[DataJud] 🎯 Tribunal prioritário (UF=${uf}): ${tribunalPrioritario}`);
+            const url = buildUrl(tribunalPrioritario);
+            const data = await chamarAPI(url, params);
+            if (data) {
+                const hits = data.hits?.hits;
+                if (hits && hits.length > 0) {
+                    console.log(`[DataJud] ✅ OAB encontrada em ${tribunalPrioritario}: ${hits.length} hits`);
+                    return extrairDados(hits);
+                }
+            }
+        }
+
+        // Depois: outros tribunais estaduais
         const multi = await chamarMultiTribunalOAB(params);
 
-        if (!multi) continue;
-        const data = multi.data;
-
-        const hits = data.hits?.hits;
-        if (hits && hits.length > 0) {
-            const total = data.hits?.total?.value || hits.length;
-            console.log(`[DataJud] ✅ Estratégia ${est.nome}: ${total} resultados`);
-
-            // Paginação se necessário
-            if (total > 50) {
-                const paginas = Math.min(Math.ceil(total / 50), 5);
-                for (let page = 2; page <= paginas; page++) {
-                    params.from = (page - 1) * 50;
-                    // Usa o mesmo tribunal que retornou resultados
-                    const tribunalEncontrado = multi.tribunal || TRIBUNAIS[0];
-                    const mais = await chamarAPI(buildUrl(tribunalEncontrado), params);
-                    if (mais?.hits?.hits) {
-                        hits.push(...mais.hits.hits);
-                    }
-                }
-                console.log(`[DataJud] Total c/ paginação: ${hits.length}`);
+        if (multi) {
+            const data = multi.data;
+            const hits = data.hits?.hits;
+            if (hits && hits.length > 0) {
+                const total = data.hits?.total?.value || hits.length;
+                console.log(`[DataJud] ✅ Estratégia ${est.nome}: ${total} resultados em ${multi.tribunal}`);
+                return extrairDados(hits);
             }
-
-            return extrairDados(hits);
         }
 
         console.log(`[DataJud] ⚠️ Estratégia ${est.nome}: 0 resultados`);
@@ -262,10 +266,67 @@ async function consultarOAB(uf, numeroOAB) {
     return null;
 }
 
+// Busca por CPF ou CNPJ — pesquisa nos campos de envolvidos/advogados
+async function consultarCPFCNPJ(documento) {
+    const limpo = documento.replace(/\D/g, '');
+    console.log(`[DataJud] 🔍 Buscando CPF/CNPJ: ${limpo}`);
+
+    // DataJud indexa CPF/CNPJ de advogados e envolvidos como texto
+    const estrategias = [
+        {
+            nome: 'simple_query_string',
+            query: {
+                simple_query_string: {
+                    query: `"${limpo}"`,
+                    fields: ["*"],
+                    default_operator: "or"
+                }
+            }
+        },
+        {
+            nome: 'wildcard_cpf',
+            query: {
+                query_string: {
+                    query: `*${limpo}*`,
+                    default_field: "*"
+                }
+            }
+        }
+    ];
+
+    for (const est of estrategias) {
+        console.log(`[DataJud] ⚡ CPF/CNPJ estratégia: ${est.nome}`);
+
+        const params = {
+            query: est.query,
+            size: 15,
+            sort: [{ "@timestamp": "desc" }]
+        };
+
+        const multi = await chamarMultiTribunal(params);
+
+        if (!multi) continue;
+        const data = multi.data;
+        const hits = data.hits?.hits;
+        if (hits && hits.length > 0) {
+            const total = data.hits?.total?.value || hits.length;
+            console.log(`[DataJud] ✅ CPF/CNPJ ${est.nome}: ${total} resultados em ${multi.tribunal}`);
+            return extrairDados(hits);
+        }
+    }
+
+    console.log(`[DataJud] ❌ CPF/CNPJ ${limpo} não encontrado`);
+    return null;
+}
+
 // Consulta unificada — decide o tipo de busca com base no parser
 async function consultarDataJud(query) {
     if (query.tipo === 'oab') {
         return consultarOAB(query.uf, query.numero);
+    }
+
+    if (query.tipo === 'cpf' || query.tipo === 'cnpj') {
+        return consultarCPFCNPJ(query.numero);
     }
 
     if (query.tipo === 'processo' || query.tipo === 'nome') {
