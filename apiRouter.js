@@ -1,5 +1,6 @@
 const escavador = require('./services/escavador');
 const datajud = require('./services/datajud');
+const jusbrasil = require('./services/jusbrasil');
 
 // Serviços extra pagos (vazios — usuário pode adicionar APIs próprias no painel)
 const servicosPagos = [];
@@ -30,7 +31,36 @@ async function consultarProcesso(query, user) {
         console.log('[apiRouter] ⚡ DataJud sem resultado, tentando Escavador...');
     }
 
-    // ── BUSCA POR OAB / CPF / CNPJ / NOME ────────────────
+    // ── BUSCA POR OAB ────────────────────────────────────
+    // 1. Jusbrasil (busca dedicada por OAB)
+    // 2. Escavador (endpoint /advogado/processos)
+    if (q.tipo === 'oab') {
+        // Jusbrasil primeiro
+        try {
+            console.log('[apiRouter] ⚡ Consultando Jusbrasil (OAB)...');
+            const jb = await jusbrasil.consultar(q);
+            if (Array.isArray(jb) && jb.length > 0) {
+                jb.forEach(r => r.fonte = jusbrasil.nome);
+                return jb;
+            }
+        } catch (err) {
+            console.error('[apiRouter] ❌ Erro Jusbrasil:', err.message);
+        }
+        // Escavador como fallback
+        try {
+            console.log('[apiRouter] ⚡ Consultando Escavador (OAB)...');
+            const esc = await escavador.consultar(q);
+            if (Array.isArray(esc) && esc.length > 0) {
+                esc.forEach(r => r.fonte = escavador.nome);
+                return esc;
+            }
+        } catch (err) {
+            console.error('[apiRouter] ❌ Erro Escavador OAB:', err.message);
+        }
+        return [];
+    }
+
+    // ── BUSCA POR CPF / CNPJ / NOME ──────────────────────
     // Escavador primeiro → se falhar, DataJud como fallback
     try {
         console.log('[apiRouter] ⚡ Consultando Escavador...');
@@ -55,8 +85,8 @@ async function consultarProcesso(query, user) {
         console.error('[apiRouter] ❌ Erro Escavador:', err.response?.data || err.message);
     }
 
-    // ── FALLBACK: DataJud para OAB / CPF / CNPJ ──────────
-    if (q.tipo === 'oab' || q.tipo === 'cpf' || q.tipo === 'cnpj') {
+    // ── FALLBACK: DataJud para CPF / CNPJ ──────────────
+    if (q.tipo === 'cpf' || q.tipo === 'cnpj') {
         try {
             console.log(`[apiRouter] ⚡ Fallback DataJud para ${q.tipo}...`);
             const dj = await datajud.consultar(q);
