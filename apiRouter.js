@@ -34,6 +34,7 @@ async function consultarProcesso(query, user) {
     // ── BUSCA POR OAB ────────────────────────────────────
     // 1. Jusbrasil (busca dedicada por OAB)
     // 2. Escavador (endpoint /advogado/processos)
+    // 3. DataJud (fallback — busca textual no tribunal do estado)
     if (q.tipo === 'oab') {
         // Jusbrasil primeiro
         try {
@@ -56,6 +57,17 @@ async function consultarProcesso(query, user) {
             }
         } catch (err) {
             console.error('[apiRouter] ❌ Erro Escavador OAB:', err.message);
+        }
+        // DataJud como último fallback
+        try {
+            console.log('[apiRouter] ⚡ Consultando DataJud (OAB fallback)...');
+            const dj = await datajud.consultar(q);
+            if (Array.isArray(dj) && dj.length > 0) {
+                dj.forEach(r => r.fonte = datajud.nome);
+                return dj;
+            }
+        } catch (err) {
+            console.error('[apiRouter] ❌ Erro DataJud OAB:', err.message);
         }
         return [];
     }
