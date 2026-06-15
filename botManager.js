@@ -17,6 +17,21 @@ async function iniciarBot(token, userId) {
         return;
     }
 
+    // Valida o token antes de iniciar
+    try {
+        const TelegramBot = require('node-telegram-bot-api');
+        const testBot = new TelegramBot(token);
+        const me = await testBot.getMe();
+        console.log(`[BotManager] ✅ Token válido: @${me.username} (userId=${userId})`);
+    } catch (err) {
+        console.error(`[BotManager] ❌ Token inválido para userId=${userId}: ${err.message}`);
+        // Limpa o token inválido do banco
+        try {
+            await pool.query("UPDATE usuarios SET bot_token = NULL WHERE id = $1", [userId]);
+        } catch (e) {}
+        return;
+    }
+
     const options = {};
     if (!BASE_URL) {
         // Apenas local: polling
@@ -24,6 +39,17 @@ async function iniciarBot(token, userId) {
     }
 
     const bot = new TelegramBot(token, options);
+
+    // Trata erros de polling para não ficar em loop infinito
+    bot.on('polling_error', (err) => {
+        if (err.code === 'ETELEGRAM' && err.message?.includes('404')) {
+            console.error(`[BotManager] ❌ Token inválido (404). Parando bot userId=${userId}`);
+            bot.stopPolling();
+            delete bots[token];
+        } else {
+            console.error(`[BotManager] ⚠️ Polling error userId=${userId}:`, err.message);
+        }
+    });
 
     // Registra webhook se em produção (rota /webhook/:userId no server.js)
     if (BASE_URL) {
