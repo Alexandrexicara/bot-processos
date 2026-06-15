@@ -31,7 +31,7 @@ app.post('/auth/registro', async (req, res) => {
         const senhaHash = await hashSenha(senha);
 
         const result = await pool.query(
-            "INSERT INTO usuarios (email, senha, telegram_id, bot_token, api_key, modo, ativo, comprovante) VALUES ($1,$2,$3,$4,$5,$6,false,$7) RETURNING id",
+            "INSERT INTO usuarios (email, senha, telegram_id, bot_token, api_key, modo, ativo, comprovante) VALUES ($1,$2,$3,$4,$5,$6,true,$7) RETURNING id",
             [email, senhaHash, telegram_id, bot_token, api_key, modo || 'gratis', comprovante || null]
         );
 
@@ -43,7 +43,7 @@ app.post('/auth/registro', async (req, res) => {
         res.json({
             success: true,
             id: userId,
-            message: "Cadastro recebido! Envie o comprovante de pagamento. Seu acesso será liberado após aprovação.",
+            message: "Cadastro realizado com sucesso! Você já pode fazer login.",
             pagamento: {
                 chave: 'santossilvac990@gmail.com',
                 banco: 'PagBank',
