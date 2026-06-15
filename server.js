@@ -287,6 +287,26 @@ app.post('/webhook/:userId', async (req, res) => {
     }
 });
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', uptime: process.uptime() });
+});
+
+// Keep-alive: ping no próprio servidor a cada 10 minutos para evitar que o Render durma
+if (process.env.BASE_URL) {
+    const KEEP_ALIVE_INTERVAL = 10 * 60 * 1000; // 10 minutos
+    setInterval(async () => {
+        try {
+            const url = `${process.env.BASE_URL}/health`;
+            const res = await fetch(url);
+            console.log(`[KeepAlive] Ping ${url} → ${res.status}`);
+        } catch (err) {
+            console.log(`[KeepAlive] Ping falhou: ${err.message}`);
+        }
+    }, KEEP_ALIVE_INTERVAL);
+    console.log('[KeepAlive] 🔄 Auto-ping ativo a cada 10min');
+}
+
 app.listen(process.env.PORT, async () => {
     console.log(`Servidor rodando na porta ${process.env.PORT}...`);
     await criarTabelas();
