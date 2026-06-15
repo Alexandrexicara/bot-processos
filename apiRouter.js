@@ -1,6 +1,7 @@
 const escavador = require('./services/escavador');
 const datajud = require('./services/datajud');
 const jusbrasil = require('./services/jusbrasil');
+const vigilant = require('./services/vigilant');
 
 // Serviços extra pagos (vazios — usuário pode adicionar APIs próprias no painel)
 const servicosPagos = [];
@@ -108,6 +109,21 @@ async function consultarProcesso(query, user) {
             }
         } catch (err) {
             console.error('[apiRouter] ❌ Erro DataJud fallback:', err.message);
+        }
+    }
+
+    // ── FALLBACK: Vigilant (TrackJud) para CPF ───────────
+    // Busca em todos os tribunais brasileiros via scraping (custa créditos)
+    if (q.tipo === 'cpf') {
+        try {
+            console.log('[apiRouter] ⚡ Fallback Vigilant (CPF)...');
+            const vig = await vigilant.consultar(q);
+            if (Array.isArray(vig) && vig.length > 0) {
+                vig.forEach(r => r.fonte = vigilant.nome);
+                return vig;
+            }
+        } catch (err) {
+            console.error('[apiRouter] ❌ Erro Vigilant:', err.message);
         }
     }
 
