@@ -1,2 +1,17 @@
+# Dependências
 node_modules/
+
+# Credenciais e ambiente
 .env
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
