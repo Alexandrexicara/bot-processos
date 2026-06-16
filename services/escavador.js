@@ -75,6 +75,8 @@ async function consultarAdvogado(uf, numero) {
             timeout: 30000
         });
         console.log(`[Escavador] STATUS: ${res.status}`);
+        const info = res.data?.advogado_encontrado;
+        if (info) console.log(`[Escavador] 👤 ${info.nome} | ${info.quantidade_processos} processos`);
         const p = extrairProcessos(res.data);
         console.log(`[Escavador] ✅ ${p.length} resultados`);
         return p.map(formatar);
@@ -97,6 +99,8 @@ async function consultarEnvolvido(params) {
             timeout: 30000
         });
         console.log(`[Escavador] STATUS: ${res.status}`);
+        const info = res.data?.envolvido_encontrado;
+        if (info) console.log(`[Escavador] 👤 ${info.nome} | ${info.quantidade_processos} processos`);
         const p = extrairProcessos(res.data);
         console.log(`[Escavador] ✅ ${p.length} resultados`);
         return p.map(formatar);
