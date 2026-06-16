@@ -6,6 +6,8 @@ const BASE = 'https://api.escavador.com/api/v2';
 const headers = {
     'Authorization': `Bearer ${API_KEY}`,
     'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
 };
 
@@ -19,15 +21,22 @@ function extrairProcessos(data) {
 }
 
 function formatar(p) {
+    // Extrai dados da fonte principal (primeira fonte do processo)
+    const fonte = p.fontes?.[0] || {};
+    const capa = fonte.capa || {};
     return {
         numero: p.numero_cnj || p.numeroProcesso || p.numero || '',
-        tribunal: p.tribunal || p.fonte || p.fontes?.[0]?.nome || '',
-        classe: p.classe || p.assunto || '',
-        data: p.data_inicio || p.data || '',
-        grau: p.grau || '',
-        orgaoJulgador: p.orgao || '',
+        tribunal: fonte.sigla || fonte.nome || p.tribunal || '',
+        classe: capa.classe || p.classe || p.assunto || '',
+        data: p.data_inicio || capa.data_distribuicao || p.data || '',
+        grau: fonte.grau_formatado || p.grau || '',
+        orgaoJulgador: capa.orgao_julgador || p.orgao || '',
         polo_ativo: p.titulo_polo_ativo || '',
         polo_passivo: p.titulo_polo_passivo || '',
+        sistema: fonte.sistema || '',
+        valor_causa: capa.valor_causa?.valor_formatado || '',
+        area: capa.area || '',
+        url: fonte.url || '',
         _score: null
     };
 }
