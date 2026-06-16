@@ -3,6 +3,8 @@ const express = require('express');
 const pool = require('./db');
 const { carregarBots, iniciarBot } = require('./botManager');
 const { gerarToken, authMiddleware, adminMiddleware, hashSenha, verificarSenha } = require('./auth');
+const { consultarProcesso } = require('./apiRouter');
+const { gerarPDFProcesso } = require('./services/pdfService');
 
 const app = express();
 app.use(express.json());
@@ -141,6 +143,117 @@ app.get('/processos', authMiddleware, async (req, res) => {
         res.json(data.rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
+    }
+});
+
+// Buscar detalhes de um processo específico (reconsulta na API)
+app.get('/processos/:id/detalhes', authMiddleware, async (req, res) => {
+    try {
+        const proc = await pool.query(
+            "SELECT p.*, u.email as usuario_email FROM processos p JOIN usuarios u ON p.usuario_id = u.id WHERE p.id = $1",
+            [req.params.id]
+        );
+        if (proc.rows.length === 0) {
+            return res.status(404).json({ error: 'Processo não encontrado' });
+        }
+
+        // Verifica permissão
+        const processo = proc.rows[0];
+        if (req.user.tipo !== 'admin' && processo.usuario_id !== req.user.id) {
+            return res.status(403).json({ error: 'Sem permissão' });
+        }
+
+        // Reconsulta na API para dados atualizados
+        const userRes = await pool.query("SELECT * FROM usuarios WHERE id=$1", [processo.usuario_id]);
+        const user = userRes.rows[0];
+
+        const resultados = await consultarProcesso(processo.numero, user);
+        const lista = Array.isArray(resultados) ? resultados : [resultados];
+        
+        // Busca o processo específico ou retorna o primeiro
+        const detalhe = lista.find(r => r.numero === processo.numero) || lista[0] || {};
+        
+        // Atualiza status se mudou
+        if (detalhe.data && detalhe.data !== processo.ultimo_status) {
+            await pool.query(
+                "UPDATE processos SET ultimo_status=$1, atualizado_em=CURRENT_TIMESTAMP WHERE id=$2",
+                [detalhe.data, processo.id]
+            );
+            processo.ultimo_status = detalhe.data;
+        }
+
+        res.json({
+            ...processo,
+            detalhes: detalhe,
+            fonte: detalhe.fonte || 'N/A'
+        });
+    } catch (err) {
+        console.error('[Detalhes] Erro:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Gerar PDF de um processo
+app.get('/processos/:id/pdf', authMiddleware, async (req, res) => {
+    try {
+        const proc = await pool.query(
+            "SELECT p.*, u.email as usuario_email FROM processos p JOIN usuarios u ON p.usuario_id = u.id WHERE p.id = $1",
+            [req.params.id]
+        );
+        if (proc.rows.length === 0) {
+            return res.status(404).json({ error: 'Processo não encontrado' });
+        }
+
+        const processo = proc.rows[0];
+        if (req.user.tipo !== 'admin' && processo.usuario_id !== req.user.id) {
+            return res.status(403).json({ error: 'Sem permissão' });
+        }
+
+        // Busca dados atualizados
+        const userRes = await pool.query("SELECT * FROM usuarios WHERE id=$1", [processo.usuario_id]);
+        const user = userRes.rows[0];
+        const resultados = await consultarProcesso(processo.numero, user);
+        const lista = Array.isArray(resultados) ? resultados : [resultados];
+        const detalhe = lista.find(r => r.numero === processo.numero) || lista[0] || {};
+
+        // Mescla dados do banco com dados da API
+        const dadosPDF = {
+            ...detalhe,
+            numero: processo.numero,
+            ultimo_status: processo.ultimo_status
+        };
+
+        const pdfBuffer = await gerarPDFProcesso(dadosPDF);
+        
+        const fileName = `processo_${processo.numero.replace(/[^0-9]/g, '')}.pdf`;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.send(pdfBuffer);
+    } catch (err) {
+        console.error('[PDF] Erro:', err.message);
+        res.status(500).json({ error: 'Erro ao gerar PDF: ' + err.message });
+    }
+});
+
+// Gerar PDF de todos os processos do usuário
+app.get('/processos/todos/pdf', authMiddleware, async (req, res) => {
+    try {
+        let query = "SELECT p.*, u.email as usuario_email FROM processos p JOIN usuarios u ON p.usuario_id = u.id";
+        let params = [];
+        if (req.user.tipo !== 'admin') {
+            query += " WHERE p.usuario_id = $1";
+            params = [req.user.id];
+        }
+        const data = await pool.query(query, params);
+        
+        const pdfBuffer = await gerarPDFProcesso(data.rows);
+        
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename="todos_processos.pdf"');
+        res.send(pdfBuffer);
+    } catch (err) {
+        console.error('[PDF Todos] Erro:', err.message);
+        res.status(500).json({ error: 'Erro ao gerar PDF: ' + err.message });
     }
 });
 

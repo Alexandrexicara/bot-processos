@@ -67,6 +67,23 @@ async function carregarProcessos() {
                 <td>${p.ultimo_status || '-'}</td>
                 <td>${atualizado}</td>
                 ${usuarioCol}
+                <td style="display:flex; gap:4px; flex-wrap:wrap;">
+                    <button onclick="verDetalhes(${p.id})" 
+                            style="padding:4px 10px; font-size:11px; border-radius:4px; cursor:pointer;
+                                   background:#007bff; color:#fff; border:none;">
+                        👁️ Ver
+                    </button>
+                    <button onclick="baixarPDF(${p.id}, '${p.numero}')" 
+                            style="padding:4px 10px; font-size:11px; border-radius:4px; cursor:pointer;
+                                   background:#ff4444; color:#fff; border:none;">
+                        📥 PDF
+                    </button>
+                    <button onclick="compartilharProcesso(${p.id}, '${p.numero}')" 
+                            style="padding:4px 10px; font-size:11px; border-radius:4px; cursor:pointer;
+                                   background:#25D366; color:#fff; border:none;">
+                        📤
+                    </button>
+                </td>
             </tr>`;
         });
     } catch (err) {
@@ -327,6 +344,163 @@ async function rejeitarPagamento(userId) {
         }
     } catch (err) {
         alert('Erro de conexão');
+    }
+}
+
+// ── DETALHES DO PROCESSO ──────────────────────────────
+async function verDetalhes(id) {
+    // Mostrar seção de detalhes
+    document.querySelectorAll('.secao').forEach(s => s.classList.remove('active'));
+    document.getElementById('sec-detalhes').classList.add('active');
+    document.getElementById('detalhes-content').innerHTML = '<div class="loading-spinner">⚡ Buscando dados atualizados...</div>';
+
+    try {
+        const res = await fetch('/processos/' + id + '/detalhes', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (res.status === 401 || res.status === 403) { logout(); return; }
+        const data = await res.json();
+        if (data.error) {
+            document.getElementById('detalhes-content').innerHTML = `<p style="color:#ff4444;">Erro: ${data.error}</p>`;
+            return;
+        }
+        renderizarDetalhes(data, id);
+    } catch (err) {
+        document.getElementById('detalhes-content').innerHTML = `<p style="color:#ff4444;">Erro ao carregar: ${err.message}</p>`;
+    }
+}
+
+function renderizarDetalhes(p, id) {
+    const d = p.detalhes || {};
+    const campos = [
+        ['Número', p.numero],
+        ['Tribunal', d.tribunal],
+        ['Classe', d.classe],
+        ['Grau', d.grau],
+        ['Órgão Julgador', d.orgaoJulgador],
+        ['Área', d.area],
+        ['Valor da Causa', d.valor_causa],
+        ['Polo Ativo', d.polo_ativo],
+        ['Polo Passivo', d.polo_passivo],
+        ['Sistema', d.sistema],
+        ['Fonte', d.fonte || p.fonte],
+        ['Status Atual', p.ultimo_status || d.data],
+        ['Data Início', d.data],
+        ['Última Atualização', p.atualizado_em ? new Date(p.atualizado_em).toLocaleString() : '-']
+    ];
+
+    let camposHTML = '';
+    for (const [label, valor] of campos) {
+        if (valor && valor !== '' && valor !== 'N/A' && valor !== '-') {
+            camposHTML += `<div class="detalhe-field"><span class="detalhe-label">${label}</span><span class="detalhe-valor">${valor}</span></div>`;
+        }
+    }
+
+    // Movimentações
+    let movHTML = '';
+    if (d.movimentacoes && d.movimentacoes.length > 0) {
+        movHTML = '<h4 style="color:#FF5E00; margin-top:20px;">📋 Movimentações</h4>';
+        for (const mov of d.movimentacoes.slice(0, 20)) {
+            movHTML += `<div class="detalhe-field"><span class="detalhe-label" style="min-width:100px;">${mov.data || ''}</span><span class="detalhe-valor">${mov.descricao || mov.texto || ''}</span></div>`;
+        }
+    }
+
+    document.getElementById('detalhes-content').innerHTML = `
+        <div class="acoes-bar">
+            <button onclick="baixarPDF(${id}, '${p.numero}')" class="btn-acao btn-pdf">📥 Baixar PDF</button>
+            <button onclick="imprimirDetalhes()" class="btn-acao btn-imprimir">🖨️ Imprimir</button>
+            <button onclick="compartilharProcesso(${id}, '${p.numero}')" class="btn-acao btn-compartilhar">📤 Compartilhar</button>
+        </div>
+        <div class="detalhe-card" id="detalhe-imprimivel">
+            <h4>📄 Processo ${p.numero}</h4>
+            ${camposHTML}
+            ${movHTML}
+        </div>
+    `;
+}
+
+function voltarProcessos() {
+    document.querySelectorAll('.secao').forEach(s => s.classList.remove('active'));
+    document.getElementById('sec-processos').classList.add('active');
+    document.querySelectorAll('.menu-btn')[0].classList.add('active');
+}
+
+async function baixarPDF(id, numero) {
+    try {
+        const res = await fetch('/processos/' + id + '/pdf', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) throw new Error('Erro ao gerar PDF');
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'processo_' + (numero || '').replace(/[^0-9]/g, '') + '.pdf';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    } catch (err) {
+        alert('Erro ao gerar PDF: ' + err.message);
+    }
+}
+
+function imprimirDetalhes() {
+    const el = document.getElementById('detalhe-imprimivel');
+    if (!el) return;
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+        <html><head><title>Processo - Impressão</title>
+        <style>
+            body { font-family: Arial; padding: 20px; color: #333; }
+            .detalhe-card { border: 1px solid #ddd; padding: 20px; border-radius: 8px; }
+            .detalhe-field { display:flex; gap:10px; padding:8px 0; border-bottom:1px solid #eee; }
+            .detalhe-label { color:#666; min-width:140px; font-weight:bold; }
+            h4 { color: #333; }
+        </style></head><body>
+        <h2>Processo Bot CNJ - Relatório</h2>
+        <p>Impresso em: ${new Date().toLocaleString('pt-BR')}</p>
+        ${el.innerHTML}
+        </body></html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+}
+
+async function compartilharProcesso(id, numero) {
+    const texto = `Processo: ${numero}\nConsultado via Processo Bot CNJ`;
+    if (navigator.share) {
+        try {
+            await navigator.share({ title: 'Processo ' + numero, text: texto });
+        } catch (e) { /* usuário cancelou */ }
+    } else {
+        // Fallback: copiar para clipboard
+        try {
+            await navigator.clipboard.writeText(texto);
+            alert('📋 Informações copiadas para a área de transferência!');
+        } catch (e) {
+            prompt('Copie as informações:', texto);
+        }
+    }
+}
+
+async function exportarTodosPDF() {
+    try {
+        const res = await fetch('/processos/todos/pdf', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) throw new Error('Erro ao gerar PDF');
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'todos_processos.pdf';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    } catch (err) {
+        alert('Erro ao exportar: ' + err.message);
     }
 }
 

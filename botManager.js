@@ -2,6 +2,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const pool = require('./db');
 const { consultarProcesso } = require('./apiRouter');
 const { parseMensagem } = require('./parser');
+const { gerarPDFProcesso } = require('./services/pdfService');
 
 const bots = {};
 const BASE_URL = process.env.BASE_URL || ''; // ex: https://meuapp.onrender.com
@@ -117,6 +118,16 @@ async function iniciarBot(token, userId) {
         await processarConsulta(bot, chatId, parsed, userId);
     });
 
+    // Comando /detalhes - busca detalhes de um processo por número
+    bot.onText(/^\/detalhes\s+(.+)/, async (msg, match) => {
+        const chatId = msg.chat.id;
+        const numero = match[1].trim();
+        
+        bot.sendMessage(chatId, `🔍 Buscando detalhes de ${numero}...`);
+        const query = { tipo: 'processo', numero: numero, original: numero };
+        await processarConsulta(bot, chatId, query, userId);
+    });
+
     // Mensagens normais (processos, OAB sem comando, nomes)
     bot.on('message', async (msg) => {
         // Ignora comandos já tratados
@@ -141,6 +152,57 @@ async function iniciarBot(token, userId) {
 
         bot.sendMessage(msg.chat.id, `🔍 Buscando ${label}...`);
         await processarConsulta(bot, msg.chat.id, parsed, userId);
+    });
+
+    // ── Callback queries dos botões inline ──────────────
+    bot.on('callback_query', async (query) => {
+        const chatId = query.message.chat.id;
+        const data = query.data;
+        
+        try {
+            if (data.startsWith('pdf:')) {
+                const numero = data.substring(4);
+                bot.answerCallbackQuery(query.id, { text: '⚡ Gerando PDF...' });
+                
+                const proc = await pool.query(
+                    'SELECT * FROM processos WHERE numero=$1 AND usuario_id=$2 LIMIT 1',
+                    [numero, userId]
+                );
+                
+                let dadosPDF;
+                if (proc.rows.length > 0) {
+                    const userRes = await pool.query('SELECT * FROM usuarios WHERE id=$1', [userId]);
+                    const resultados = await consultarProcesso(numero, userRes.rows[0]);
+                    const lista = Array.isArray(resultados) ? resultados : [resultados];
+                    dadosPDF = lista.find(r => r.numero === numero) || lista[0] || { numero, ultimo_status: proc.rows[0].ultimo_status };
+                } else {
+                    dadosPDF = { numero };
+                }
+
+                const pdfBuffer = await gerarPDFProcesso(dadosPDF);
+                const fileName = `processo_${numero.replace(/[^0-9]/g, '')}.pdf`;
+                
+                await bot.sendDocument(chatId, pdfBuffer, {}, {
+                    filename: fileName,
+                    contentType: 'application/pdf'
+                });
+                
+            } else if (data.startsWith('share:')) {
+                const numero = data.substring(6);
+                bot.answerCallbackQuery(query.id, { text: '📋 Mensagem pronta!' });
+                
+                const userRes = await pool.query('SELECT * FROM usuarios WHERE id=$1', [userId]);
+                const resultados = await consultarProcesso(numero, userRes.rows[0]);
+                const lista = Array.isArray(resultados) ? resultados : [resultados];
+                const detalhe = lista.find(r => r.numero === numero) || lista[0] || {};
+                
+                const msg = formatarResultado({ ...detalhe, numero });
+                bot.sendMessage(chatId, '📤 *Compartilhe esta mensagem:*\n\n' + msg, { parse_mode: 'Markdown' });
+            }
+        } catch (err) {
+            console.error('[BotManager] Erro callback:', err.message);
+            bot.answerCallbackQuery(query.id, { text: '❌ Erro ao processar' });
+        }
     });
 
     bots[token] = bot;
@@ -209,7 +271,18 @@ async function processarConsulta(bot, chatId, query, userId) {
             }
 
             const mensagem = formatarResultado(dados);
-            bot.sendMessage(chatId, mensagem, { parse_mode: 'Markdown' });
+            
+            // Botões inline: PDF e Compartilhar
+            const botoes = {
+                inline_keyboard: [
+                    [
+                        { text: '📥 PDF', callback_data: `pdf:${dados.numero}` },
+                        { text: '📤 Compartilhar', callback_data: `share:${dados.numero}` }
+                    ]
+                ]
+            };
+            
+            bot.sendMessage(chatId, mensagem, { parse_mode: 'Markdown', reply_markup: botoes });
 
             // Pequena pausa para não floodar
             if (exibir.length > 3) {

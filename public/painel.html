@@ -4,6 +4,20 @@
     <title>bot-processos - Painel</title>
     <link rel="icon" type="image/png" href="/img/logo.png">
     <link rel="stylesheet" href="style.css">
+<style>
+.detalhe-card { background:#1a1a1a; border:1px solid #333; border-radius:8px; padding:20px; margin-bottom:15px; }
+.detalhe-card h4 { color:#FF5E00; margin-top:0; }
+.detalhe-field { display:flex; gap:10px; padding:8px 0; border-bottom:1px solid #2a2a2a; }
+.detalhe-label { color:#888; min-width:140px; font-size:13px; }
+.detalhe-valor { color:#fff; font-size:13px; word-break:break-word; }
+.acoes-bar { display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; }
+.btn-acao { padding:10px 18px; border:none; border-radius:4px; cursor:pointer; font-size:13px; font-weight:bold; }
+.btn-pdf { background:#ff4444; color:#fff; }
+.btn-imprimir { background:#007bff; color:#fff; }
+.btn-compartilhar { background:#25D366; color:#fff; }
+.btn-voltar { background:#555; color:#fff; }
+.loading-spinner { text-align:center; padding:40px; color:#888; }
+</style>
 </head>
 <body>
 
@@ -32,7 +46,17 @@
 
     <!-- Seção Processos -->
     <section id="sec-processos" class="secao active">
-        <h3>Processos</h3>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <h3>Processos</h3>
+            <div style="display:flex; gap:8px;">
+                <button onclick="exportarTodosPDF()" style="padding:8px 16px; background:#FF5E00; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:13px;">
+                    📥 Exportar Todos PDF
+                </button>
+                <button onclick="carregarProcessos()" style="padding:8px 16px; background:#007bff; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:13px;">
+                    🔄 Atualizar
+                </button>
+            </div>
+        </div>
         <table>
             <thead>
                 <tr>
@@ -40,10 +64,23 @@
                     <th>Status</th>
                     <th>Atualizado</th>
                     <th id="col-usuario" class="hidden">Usuário</th>
+                    <th>Ações</th>
                 </tr>
             </thead>
             <tbody></tbody>
         </table>
+    </section>
+
+    <!-- Seção Detalhes do Processo -->
+    <section id="sec-detalhes" class="secao">
+        <div style="margin-bottom:15px;">
+            <button onclick="voltarProcessos()" style="padding:8px 16px; background:#555; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:13px;">
+                ← Voltar
+            </button>
+        </div>
+        <div id="detalhes-content">
+            <p>Carregando...</p>
+        </div>
     </section>
 
     <!-- Seção Usuários (Admin) -->
