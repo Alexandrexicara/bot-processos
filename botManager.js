@@ -278,20 +278,19 @@ async function processarConsultaArquivo(bot, chatId, query, userId, label) {
         // 5. Gerar o link público
         const linkPublico = BASE_URL ? `${BASE_URL}/resultados/${consultaId}` : `https://bot-processos.onrender.com/resultados/${consultaId}`;
 
-        // 6. Enviar LINK clicável com resumo
+        // 6. Enviar mensagem com "detalhes.txt" como LINK AZUL clicável
         const temTelefones = telefones.length > 0;
         const msgFinal =
-            `✅ *${lista.length} processo(s) encontrado(s)*\n\n` +
-            `🔗 Clique no link abaixo para ver todos os detalhes:\n` +
-            `${linkPublico}\n\n` +
+            `✅ <b>${lista.length} processo(s) encontrado(s)</b>\n\n` +
+            `📄 <a href="${linkPublico}">detalhes.txt</a>\n\n` +
             `${query.tipo === 'oab' ? `OAB: ${query.uf}${query.numero}` : `Busca: ${label}`}\n` +
-            `${temTelefones ? '📞 Telefones encontrados — veja na página' : ''}\n` +
-            `\n💡 Cada processo tem link direto para o tribunal`;
+            `${temTelefones ? '📞 Telefones encontrados — veja no arquivo' : ''}\n` +
+            `\n💡 Clique em <b>detalhes.txt</b> para ver todos os processos`;
 
         await bot.editMessageText(msgFinal, {
             chat_id: chatId,
             message_id: msgBuscando.message_id,
-            parse_mode: 'Markdown',
+            parse_mode: 'HTML',
             disable_web_page_preview: false
         });
 
