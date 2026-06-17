@@ -24,19 +24,54 @@ function formatar(p) {
     // Extrai dados da fonte principal (primeira fonte do processo)
     const fonte = p.fontes?.[0] || {};
     const capa = fonte.capa || {};
+    
+    // Extrai envolvidos (partes, advogados)
+    const envolvidos = fonte.envolvidos || [];
+    const partes = envolvidos.map(e => ({
+        nome: e.nome || '',
+        tipo: e.tipo_normalizado || e.tipo || '',
+        polo: e.polo || '',
+        tipo_pessoa: e.tipo_pessoa || '',
+        cpf: e.cpf || '',
+        cnpj: e.cnpj || '',
+        advogados: (e.advogados || []).map(a => a.nome || a)
+    }));
+    
+    // Extrai informacoes complementares (relator, fase, origem, etc)
+    const infoComp = {};
+    if (capa.informacoes_complementares) {
+        for (const info of capa.informacoes_complementares) {
+            const chave = (info.tipo || '').toLowerCase().replace(/[^a-z0-9]/g, '_');
+            infoComp[chave] = info.valor;
+        }
+    }
+
     return {
         numero: p.numero_cnj || p.numeroProcesso || p.numero || '',
         tribunal: fonte.sigla || fonte.nome || p.tribunal || '',
+        tribunal_descricao: fonte.descricao || '',
         classe: capa.classe || p.classe || p.assunto || '',
+        assunto: capa.assunto || capa.assunto_principal_normalizado?.path_completo || '',
+        area: capa.area || '',
         data: p.data_inicio || capa.data_distribuicao || p.data || '',
+        data_ultima_movimentacao: p.data_ultima_movimentacao || fonte.data_ultima_movimentacao || '',
         grau: fonte.grau_formatado || p.grau || '',
         orgaoJulgador: capa.orgao_julgador || p.orgao || '',
+        situacao: capa.situacao || fonte.status_predito || '',
         polo_ativo: p.titulo_polo_ativo || '',
         polo_passivo: p.titulo_polo_passivo || '',
         sistema: fonte.sistema || '',
         valor_causa: capa.valor_causa?.valor_formatado || '',
-        area: capa.area || '',
+        segredo_justica: fonte.segredo_justica || false,
         url: fonte.url || '',
+        quantidade_movimentacoes: p.quantidade_movimentacoes || fonte.quantidade_movimentacoes || 0,
+        estado: p.estado_origem?.nome || p.estado_origem?.sigla || '',
+        unidade: p.unidade_origem?.nome || '',
+        partes: partes,
+        info_complementares: infoComp,
+        relator: infoComp.relator || '',
+        fase: infoComp.fase || '',
+        origem: infoComp.origem || '',
         _score: null
     };
 }

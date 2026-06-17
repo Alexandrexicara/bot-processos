@@ -344,13 +344,47 @@ function extrairDados(hits) {
 
     for (const hit of hits) {
         const p = hit._source;
+        
+        // Extrai partes do processo
+        const partes = [];
+        if (p.partes) {
+            for (const parte of p.partes) {
+                partes.push({
+                    nome: parte.nome || parte.polo || '',
+                    tipo: parte.tipo || '',
+                    polo: parte.polo || '',
+                    advogados: (parte.advogados || []).map(a => a.nome || a)
+                });
+            }
+        }
+        
+        // Extrai movimentacoes
+        const movimentacoes = [];
+        if (p.movimentacoes) {
+            for (const mov of p.movimentacoes.slice(0, 20)) {
+                movimentacoes.push({
+                    data: mov.dataMovimentacao || mov.data || '',
+                    descricao: mov.descricao || mov.texto || mov.tipo || ''
+                });
+            }
+        }
+        
         resultados.push({
             numero: p.numeroProcesso,
             tribunal: p.tribunal || p.nomeOrgao,
             classe: p.classe?.nome || p.classeProcessual,
+            assunto: p.assunto?.nome || p.assuntoProcessual,
             data: p.dataHoraUltimaAtualizacao || p["@timestamp"],
+            data_distribuicao: p.dataHoraDistribuicao || p.dataDistribuicao,
             grau: p.grau,
             orgaoJulgador: p.orgaoJulgador?.nome,
+            situacao: p.situacao || p.nivelSigilo,
+            valor_causa: p.valorCausa,
+            polo_ativo: p.partes?.filter(p => p.polo === 'ATIVO').map(p => p.nome).join(', ') || '',
+            polo_passivo: p.partes?.filter(p => p.polo === 'PASSIVO').map(p => p.nome).join(', ') || '',
+            partes: partes,
+            movimentacoes: movimentacoes,
+            sistema: p.sistema,
             _score: hit._score
         });
     }

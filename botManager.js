@@ -309,11 +309,37 @@ function formatarResultado(dados) {
     let msg = '';
     msg += `📄 *${dados.numero || 'N/A'}*\n`;
     msg += `🏛️ Tribunal: ${dados.tribunal || 'N/A'}\n`;
-    msg += `📚 Classe: ${dados.classe || 'N/A'}\n`;
     if (dados.grau) msg += `📊 Grau: ${dados.grau}\n`;
+    msg += `📚 Classe: ${dados.classe || 'N/A'}\n`;
+    if (dados.assunto) msg += `📝 Assunto: ${dados.assunto}\n`;
+    if (dados.area) msg += `📂 Área: ${dados.area}\n`;
+    if (dados.situacao) msg += `📌 Situação: ${dados.situacao}\n`;
     if (dados.orgaoJulgador) msg += `⚖️ Órgão: ${dados.orgaoJulgador}\n`;
-    if (dados.fonte) msg += `🔍 Fonte: ${dados.fonte}\n`;
-    msg += `🕒 Atualizado: ${dados.data || 'N/A'}`;
+    if (dados.relator) msg += `👨‍⚖️ Relator: ${dados.relator}\n`;
+    if (dados.valor_causa) msg += `💰 Valor: R$ ${dados.valor_causa}\n`;
+    if (dados.polo_ativo) msg += `➡️ Autor: ${dados.polo_ativo}\n`;
+    if (dados.polo_passivo) msg += `⬅️ Réu: ${dados.polo_passivo}\n`;
+    
+    // Partes detalhadas
+    if (dados.partes && dados.partes.length > 0) {
+        msg += `\n👥 *Partes:*\n`;
+        for (const parte of dados.partes.slice(0, 6)) {
+            const tipo = parte.tipo || parte.polo || '';
+            msg += `  • _${tipo}_: ${parte.nome}`;
+            if (parte.advogados && parte.advogados.length > 0) {
+                msg += ` (Adv: ${parte.advogados.slice(0, 2).join(', ')})`;
+            }
+            msg += `\n`;
+        }
+    }
+    
+    if (dados.fase) msg += `\n📋 Fase: ${dados.fase}`;
+    if (dados.origem) msg += `\n📍 Origem: ${dados.origem}`;
+    if (dados.sistema) msg += `\n💻 Sistema: ${dados.sistema}`;
+    if (dados.segredo_justica) msg += `\n🔒 Segredo de Justiça`;
+    if (dados.quantidade_movimentacoes) msg += `\n📊 ${dados.quantidade_movimentacoes} movimentações`;
+    if (dados.fonte) msg += `\n🔍 Fonte: ${dados.fonte}`;
+    msg += `\n🕒 Atualizado: ${dados.data_ultima_movimentacao || dados.data || 'N/A'}`;
     return msg;
 }
 
