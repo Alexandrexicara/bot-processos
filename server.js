@@ -444,6 +444,76 @@ app.put('/auth/comprovante', authMiddleware, async (req, res) => {
     }
 });
 
+// ── ENDPOINTS PÚBLICOS (sem autenticação) ──
+// Página pública do processo
+app.get('/processo/:numero', (req, res) => {
+    res.sendFile(__dirname + '/public/processo.html');
+});
+
+// API pública: retorna dados do processo
+app.get('/api/processo/:numero', async (req, res) => {
+    try {
+        const numero = decodeURIComponent(req.params.numero);
+        // Busca o processo no banco para achar o usuário dono
+        const proc = await pool.query(
+            'SELECT p.*, u.id as uid FROM processos p JOIN usuarios u ON p.usuario_id = u.id WHERE p.numero = $1 LIMIT 1',
+            [numero]
+        );
+        
+        let detalhe = {};
+        if (proc.rows.length > 0) {
+            const p = proc.rows[0];
+            const userRes = await pool.query('SELECT * FROM usuarios WHERE id=$1', [p.uid]);
+            const user = userRes.rows[0];
+            const resultados = await consultarProcesso(numero, user);
+            const lista = Array.isArray(resultados) ? resultados : [resultados];
+            detalhe = lista.find(r => r.numero === numero) || lista[0] || {};
+        } else {
+            // Se não existe no banco, tenta consultar como admin padrão
+            const adminRes = await pool.query("SELECT * FROM usuarios WHERE tipo='admin' LIMIT 1");
+            if (adminRes.rows.length > 0) {
+                const resultados = await consultarProcesso(numero, adminRes.rows[0]);
+                const lista = Array.isArray(resultados) ? resultados : [resultados];
+                detalhe = lista.find(r => r.numero === numero) || lista[0] || {};
+            }
+        }
+        
+        res.json({ numero, detalhes: detalhe });
+    } catch (err) {
+        console.error('[API Pública] Erro:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// API pública: PDF do processo
+app.get('/api/processo/:numero/pdf', async (req, res) => {
+    try {
+        const numero = decodeURIComponent(req.params.numero);
+        const proc = await pool.query(
+            'SELECT p.*, u.id as uid FROM processos p JOIN usuarios u ON p.usuario_id = u.id WHERE p.numero = $1 LIMIT 1',
+            [numero]
+        );
+        
+        let dadosPDF = { numero };
+        if (proc.rows.length > 0) {
+            const p = proc.rows[0];
+            const userRes = await pool.query('SELECT * FROM usuarios WHERE id=$1', [p.uid]);
+            const user = userRes.rows[0];
+            const resultados = await consultarProcesso(numero, user);
+            const lista = Array.isArray(resultados) ? resultados : [resultados];
+            dadosPDF = lista.find(r => r.numero === numero) || lista[0] || { numero };
+        }
+        
+        const pdfBuffer = await gerarPDFProcesso(dadosPDF);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="processo_${numero.replace(/[^0-9]/g, '')}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (err) {
+        console.error('[API Pública PDF] Erro:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Webhook Telegram por usuário
 const botsMap = require('./botManager').bots;
 app.post('/webhook/:userId', async (req, res) => {

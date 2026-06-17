@@ -416,6 +416,10 @@ function gerarArquivoDetalhes(lista, query, label) {
         linhas.push(`PROCESSO ${i + 1} de ${lista.length}`);
         linhas.push(separadorFino);
         linhas.push(`Número: ${p.numero || 'N/A'}`);
+        // Link público para visualizar o processo completo
+        if (p.numero && BASE_URL) {
+            linhas.push(`LINK: ${BASE_URL}/processo/${encodeURIComponent(p.numero)}`);
+        }
         linhas.push(`Tribunal: ${p.tribunal || p.tribunal_descricao || 'N/A'}`);
         if (p.classe) linhas.push(`Classe: ${p.classe}`);
         if (p.assunto) linhas.push(`Assunto: ${p.assunto}`);

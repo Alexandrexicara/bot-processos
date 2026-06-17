@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Processo - Processo Bot CNJ</title>
+    <link rel="icon" type="image/png" href="/img/logo.png">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:'Segoe UI',Arial,sans-serif;background:#0d1117;color:#e6edf3;min-height:100vh}
+        .header{background:linear-gradient(135deg,#1a1a2e,#16213e);padding:20px;text-align:center;border-bottom:2px solid #FF5E00}
+        .header img{height:40px;margin-bottom:10px}
+        .header h1{font-size:20px;color:#FF5E00}
+        .header .sub{font-size:13px;color:#888;margin-top:5px}
+        .container{max-width:900px;margin:20px auto;padding:0 15px}
+        .card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;margin-bottom:20px}
+        .card h2{color:#FF5E00;font-size:18px;margin-bottom:15px;padding-bottom:10px;border-bottom:1px solid #30363d}
+        .field{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #21262d;font-size:14px}
+        .field-label{color:#8b949e;min-width:150px;font-weight:600}
+        .field-value{color:#e6edf3;word-break:break-word;flex:1}
+        .field-value a{color:#58a6ff}
+        .btn-group{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}
+        .btn{padding:14px 28px;border:none;border-radius:8px;cursor:pointer;font-size:15px;font-weight:bold;text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:.2s}
+        .btn:hover{opacity:.85}
+        .btn-verde{background:#238636;color:#fff}
+        .btn-azul{background:#1f6feb;color:#fff}
+        .btn-laranja{background:#FF5E00;color:#fff}
+        .btn-pdf{background:#da3633;color:#fff}
+        .parte-card{background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:14px;margin-bottom:10px}
+        .parte-tipo{color:#FF5E00;font-size:11px;text-transform:uppercase;font-weight:bold;letter-spacing:1px}
+        .parte-nome{color:#fff;font-size:16px;margin:6px 0;font-weight:600}
+        .parte-info{color:#8b949e;font-size:13px;margin:3px 0}
+        .parte-adv{color:#58a6ff;font-size:13px;margin-top:5px}
+        .mov-item{padding:8px 0;border-bottom:1px solid #21262d;font-size:13px;display:flex;gap:10px}
+        .mov-data{color:#FF5E00;font-weight:600;min-width:95px}
+        .mov-desc{color:#c9d1d9}
+        .loading{text-align:center;padding:60px}
+        .spinner{font-size:40px;animation:spin 1s linear infinite;display:inline-block}
+        @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+        .footer{text-align:center;padding:30px;color:#484f58;font-size:12px;border-top:1px solid #21262d;margin-top:40px}
+        .erro{text-align:center;padding:60px;color:#f85149}
+        .numero-titulo{font-size:22px;color:#fff;font-family:monospace;word-break:break-all;margin:10px 0}
+        @media(max-width:600px){.field{flex-direction:column;gap:2px}.field-label{min-width:auto}.btn-group{flex-direction:column}.btn{width:100%;justify-content:center}}
+    </style>
+</head>
+<body>
+<div class="header">
+    <img src="/img/logo.png" alt="Logo" onerror="this.style.display='none'">
+    <h1>Processo Bot CNJ</h1>
+    <div class="sub">Documentação do Processo Judicial</div>
+</div>
+<div class="container" id="app">
+    <div class="loading"><div class="spinner">⚡</div><p style="margin-top:15px;color:#8b949e;">Carregando dados do processo...</p></div>
+</div>
+<div class="footer">Processo Bot CNJ — Consulta pública de processos judiciais</div>
+<script>
+const TRIBUNAIS_URL = {
+    tjsp: n=>`https://esaj.tjsp.jus.br/cpopg/open.do?processo.numero=${n}`,
+    tjrj: n=>`https://www3.tjrj.jus.br/consultapublica/`,
+    tjmg: n=>`https://www2.tjmg.jus.br/juridico/pje/consultaProcesso.jsp?numProcesso=${n}`,
+    tjrs: n=>`https://www.tjrs.jus.br/site_php/processo/consultaProcesso.php?numeroProcesso=${n}`,
+    tjpr: n=>`https://www.tjpr.jus.br/consulta-processual`,
+    tjba: n=>`https://www5.tjba.jus.br/`,
+    tjsc: n=>`https://consultaprocessual.tjsc.jus.br/`,
+    tjdft: n=>`https://pje.tjdft.jus.br/pje/`,
+    tjms: n=>`https://www5.tjms.jus.br/`,
+    tjgo: n=>`https://projudi.tjgo.jus.br/BuscaProcesso`,
+    tjpe: n=>`https://pje.tjpe.jus.br/`,
+    tjce: n=>`https://esaj.tjce.jus.br/cpopg/open.do?processo.numero=${n}`,
+    trf1: n=>`https://pje1g.trf1.jus.br/pje/`,
+    trf2: n=>`https://eproc-consulta.trf2.jus.br/eproc/`,
+    trf3: n=>`https://pje1g.trf3.jus.br/pje/`,
+    trf4: n=>`https://eproc-consulta.trf4.jus.br/eproc/`,
+    trf5: n=>`https://pje.trf5.jus.br/pje/`,
+    stj: n=>`https://processo.stj.jus.br/processo/pesquisa/?q=${n}`,
+    tst: n=>`https://consultaprocessual.tst.jus.br/`
+};
+function detectarTribunal(num){
+    const l=num.replace(/\D/g,'');if(l.length<16)return null;
+    const m={'8.26':'tjsp','8.19':'tjrj','8.13':'tjmg','8.21':'tjrs','8.16':'tjpr','8.05':'tjba','8.24':'tjsc','8.07':'tjdft','8.09':'tjgo','8.17':'tjpe','8.06':'tjce','5.01':'trf1','5.02':'trf2','5.03':'trf3','5.04':'trf4','5.05':'trf5','1.02':'stj','1.03':'tst'};
+    return m[`${l[13]}.${l.substring(14,16)}`]||null;
+}
+function getUrlTribunal(num){const t=detectarTribunal(num);return t&&TRIBUNAIS_URL[t]?TRIBUNAIS_URL[t](num):null;}
+
+const numeroProcesso = window.location.pathname.split('/').filter(Boolean).pop() || new URLSearchParams(window.location.search).get('numero') || '';
+const container = document.getElementById('app');
+
+async function carregar(){
+    try{
+        const res=await fetch('/api/processo/'+encodeURIComponent(numeroProcesso));
+        if(!res.ok)throw new Error('Processo não encontrado');
+        const data=await res.json();
+        renderizar(data);
+    }catch(err){
+        container.innerHTML=`<div class="erro"><h2>❌ Erro</h2><p>${err.message}</p><p style="margin-top:10px;color:#8b949e;">Processo: ${numeroProcesso}</p></div>`;
+    }
+}
+function h(tag,val){if(!val||val===''||val===false)return'';return`<div class="field"><span class="field-label">${tag}</span><span class="field-value">${val}</span></div>`;}
+function renderizar(p){
+    const d=p.detalhes||p;
+    const num=d.numero||numeroProcesso;
+    const urlTrib=getUrlTribunal(num)||d.url||null;
+    let html='';
+    // Botões
+    html+='<div class="btn-group">';
+    if(urlTrib)html+=`<a href="${urlTrib}" target="_blank" class="btn btn-verde">⚖️ Ver Processo no Tribunal</a>`;
+    html+=`<a href="/api/processo/${encodeURIComponent(num)}/pdf" target="_blank" class="btn btn-pdf">📥 Baixar PDF</a>`;
+    html+=`<button onclick="window.print()" class="btn btn-azul">🖨️ Imprimir</button>`;
+    html+='</div>';
+    // Dados
+    html+='<div class="card"><h2>📌 Dados do Processo</h2>';
+    html+=`<div class="numero-titulo">📄 ${num}</div>`;
+    html+=h('Tribunal',d.tribunal||d.tribunal_descricao);
+    html+=h('Classe',d.classe);html+=h('Assunto',d.assunto);html+=h('Área',d.area);
+    html+=h('Grau',d.grau);html+=h('Situação',d.situacao);
+    html+=h('Órgão Julgador',d.orgaoJulgador);html+=h('Relator',d.relator);
+    html+=h('Valor da Causa',d.valor_causa);html+=h('Sistema',d.sistema);
+    html+=h('Estado',d.estado);html+=h('Unidade',d.unidade);
+    html+=h('Data de Início',d.data);html+=h('Última Movimentação',d.data_ultima_movimentacao||d.ultimo_status);
+    html+=h('Total Movimentações',d.quantidade_movimentacoes);
+    html+=h('Fase',d.fase);html+=h('Origem',d.origem);html+=h('Fonte',d.fonte);
+    if(d.segredo_justica)html+=h('Segredo de Justiça','Sim');
+    html+='</div>';
+    // Polos
+    if(d.polo_ativo||d.polo_passivo){
+        html+='<div class="card"><h2>⚖️ Polos</h2>';
+        html+=h('Polo Ativo (Autor)',d.polo_ativo);
+        html+=h('Polo Passivo (Réu)',d.polo_passivo);
+        html+='</div>';
+    }
+    // Partes
+    if(d.partes&&d.partes.length>0){
+        html+='<div class="card"><h2>👥 Partes e Advogados</h2>';
+        for(const parte of d.partes){
+            const tipo=parte.tipo||parte.polo||'Parte';
+            html+='<div class="parte-card">';
+            html+=`<div class="parte-tipo">${tipo}</div>`;
+            html+=`<div class="parte-nome">${parte.nome||'N/A'}</div>`;
+            if(parte.cpf)html+=`<div class="parte-info">CPF: ${parte.cpf}</div>`;
+            if(parte.cnpj)html+=`<div class="parte-info">CNPJ: ${parte.cnpj}</div>`;
+            if(parte.telefone)html+=`<div class="parte-info">📞 ${parte.telefone}</div>`;
+            if(parte.email)html+=`<div class="parte-info">📧 ${parte.email}</div>`;
+            if(parte.advogados)for(const adv of parte.advogados){
+                const nm=typeof adv==='string'?adv:adv.nome||adv;
+                const oab=typeof adv==='object'?adv.oab||'':'';
+                const tel=typeof adv==='object'?adv.telefone||'':'';
+                html+=`<div class="parte-adv">👨‍⚖️ ${nm}${oab?' — OAB: '+oab:''}${tel?' | 📞 '+tel:''}</div>`;
+            }
+            html+='</div>';
+        }
+        html+='</div>';
+    }
+    // Info complementares
+    if(d.info_complementares&&Object.keys(d.info_complementares).length>0){
+        html+='<div class="card"><h2>📋 Informações Complementares</h2>';
+        for(const[k,v]of Object.entries(d.info_complementares)){
+            html+=h(k.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase()),v);
+        }
+        html+='</div>';
+    }
+    // Movimentações
+    if(d.movimentacoes&&d.movimentacoes.length>0){
+        html+=`<div class="card"><h2>📋 Movimentações (${d.movimentacoes.length})</h2>`;
+        for(const mov of d.movimentacoes.slice(0,30)){
+            html+=`<div class="mov-item"><span class="mov-data">${mov.data||''}</span><span class="mov-desc">${mov.descricao||mov.texto||''}</span></div>`;
+        }
+        html+='</div>';
+    }
+    // Link tribunal no final
+    if(urlTrib){
+        html+='<div class="card" style="text-align:center">';
+        html+='<h2>🔗 Acessar no Sistema Judicial</h2>';
+        html+='<p style="margin:10px 0;color:#8b949e">Clique abaixo para acessar o processo completo no sistema do tribunal e baixar documentos oficiais:</p>';
+        html+=`<a href="${urlTrib}" target="_blank" class="btn btn-verde" style="font-size:18px;padding:16px 40px">⚖️ Ver Processo Completo no Tribunal</a>`;
+        html+='</div>';
+    }
+    container.innerHTML=html;
+    document.title=`Processo ${num} - Processo Bot CNJ`;
+}
+carregar();
+</script>
+</body>
+</html>
