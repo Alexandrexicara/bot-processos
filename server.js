@@ -445,6 +445,34 @@ app.put('/auth/comprovante', authMiddleware, async (req, res) => {
 });
 
 // ── ENDPOINTS PÚBLICOS (sem autenticação) ──
+// Página pública de resultados da consulta (lista de processos)
+app.get('/resultados/:id', (req, res) => {
+    res.sendFile(__dirname + '/public/resultados.html');
+});
+
+// API pública: retorna dados da consulta
+app.get('/api/resultados/:id', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM consultas_publicas WHERE id=$1', [req.params.id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Consulta não encontrada' });
+        }
+        const c = result.rows[0];
+        res.json({
+            id: c.id,
+            tipo: c.tipo,
+            query_texto: c.query_texto,
+            label: c.label,
+            resultados: c.resultados || [],
+            telefones: c.telefones || [],
+            criado_em: c.criado_em
+        });
+    } catch (err) {
+        console.error('[API Resultados] Erro:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Página pública do processo
 app.get('/processo/:numero', (req, res) => {
     res.sendFile(__dirname + '/public/processo.html');
@@ -617,6 +645,19 @@ async function criarTabelas() {
         try {
             await pool.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS status_pagamento VARCHAR(20) DEFAULT 'pendente'`);
         } catch (e) { /* Coluna já existe */ }
+
+        // Tabela de consultas públicas (links compartilháveis do bot)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS consultas_publicas (
+                id VARCHAR(64) PRIMARY KEY,
+                tipo VARCHAR(20),
+                query_texto VARCHAR(255),
+                label VARCHAR(255),
+                resultados JSONB,
+                telefones JSONB,
+                criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
     } catch (err) {
         console.error('Erro ao criar tabelas:', err.message);
     }

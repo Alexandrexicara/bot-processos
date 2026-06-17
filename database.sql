@@ -22,3 +22,13 @@ CREATE TABLE processos (
     ultimo_status TEXT,
     atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE consultas_publicas (
+    id VARCHAR(64) PRIMARY KEY,
+    tipo VARCHAR(20),
+    query_texto VARCHAR(255),
+    label VARCHAR(255),
+    resultados JSONB,
+    telefones JSONB,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

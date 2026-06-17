@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resultados - Processo Bot CNJ</title>
+    <link rel="icon" type="image/png" href="/img/logo.png">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:'Segoe UI',Arial,sans-serif;background:#0d1117;color:#e6edf3;min-height:100vh}
+        .header{background:linear-gradient(135deg,#1a1a2e,#16213e);padding:20px;text-align:center;border-bottom:2px solid #FF5E00}
+        .header img{height:40px;margin-bottom:10px}
+        .header h1{font-size:20px;color:#FF5E00}
+        .header .sub{font-size:13px;color:#888;margin-top:5px}
+        .container{max-width:1000px;margin:20px auto;padding:0 15px}
+        .resumo{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px;margin-bottom:20px}
+        .resumo h2{color:#FF5E00;font-size:18px;margin-bottom:10px}
+        .resumo-info{display:flex;gap:20px;flex-wrap:wrap;font-size:14px;color:#8b949e}
+        .resumo-info span{color:#e6edf3;font-weight:600}
+        .telefone-box{background:rgba(35,134,54,0.1);border:1px solid #238636;border-radius:8px;padding:15px;margin-bottom:20px}
+        .telefone-box h3{color:#3fb950;margin-bottom:10px;font-size:15px}
+        .telefone-item{color:#e6edf3;font-size:14px;padding:3px 0}
+        .processo-card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px;margin-bottom:15px;transition:border-color .2s}
+        .processo-card:hover{border-color:#FF5E00}
+        .proc-header{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px}
+        .proc-numero{font-size:16px;font-weight:bold;color:#fff;font-family:monospace;word-break:break-all}
+        .proc-badge{background:#1f6feb;color:#fff;padding:4px 10px;border-radius:20px;font-size:11px;white-space:nowrap;font-weight:bold}
+        .proc-info{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;margin-bottom:12px}
+        .proc-field{font-size:13px;color:#8b949e}
+        .proc-field span{color:#e6edf3}
+        .proc-partes{font-size:13px;margin-bottom:12px}
+        .proc-polo{padding:3px 0}
+        .proc-polo-ativo{color:#3fb950}
+        .proc-polo-passivo{color:#f85149}
+        .proc-actions{display:flex;gap:8px;flex-wrap:wrap}
+        .btn{padding:10px 20px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:.2s}
+        .btn:hover{opacity:.85}
+        .btn-verde{background:#238636;color:#fff}
+        .btn-azul{background:#1f6feb;color:#fff}
+        .btn-laranja{background:#FF5E00;color:#fff}
+        .btn-pdf{background:#da3633;color:#fff}
+        .btn-sm{padding:8px 14px;font-size:12px}
+        .loading{text-align:center;padding:60px}
+        .spinner{font-size:40px;animation:spin 1s linear infinite;display:inline-block}
+        @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+        .footer{text-align:center;padding:30px;color:#484f58;font-size:12px;border-top:1px solid #21262d;margin-top:40px}
+        .erro{text-align:center;padding:60px;color:#f85149}
+        .contador{background:#FF5E00;color:#fff;display:inline-block;padding:6px 16px;border-radius:20px;font-weight:bold;font-size:14px;margin-bottom:15px}
+        @media(max-width:600px){.proc-header{flex-direction:column}.proc-info{grid-template-columns:1fr}.proc-actions{flex-direction:column}.btn{width:100%;justify-content:center}}
+    </style>
+</head>
+<body>
+<div class="header">
+    <img src="/img/logo.png" alt="Logo" onerror="this.style.display='none'">
+    <h1>Processo Bot CNJ</h1>
+    <div class="sub">Resultados da Consulta</div>
+</div>
+<div class="container" id="app">
+    <div class="loading"><div class="spinner">⚡</div><p style="margin-top:15px;color:#8b949e;">Carregando resultados...</p></div>
+</div>
+<div class="footer">Processo Bot CNJ — Consulta pública de processos judiciais</div>
+<script>
+const TRIBUNAIS_URL={tjsp:n=>`https://esaj.tjsp.jus.br/cpopg/open.do?processo.numero=${n}`,tjrj:n=>`https://www3.tjrj.jus.br/consultapublica/`,tjmg:n=>`https://www2.tjmg.jus.br/juridico/pje/consultaProcesso.jsp?numProcesso=${n}`,tjrs:n=>`https://www.tjrs.jus.br/site_php/processo/consultaProcesso.php?numeroProcesso=${n}`,tjpr:n=>`https://www.tjpr.jus.br/consulta-processual`,tjba:n=>`https://www5.tjba.jus.br/`,tjsc:n=>`https://consultaprocessual.tjsc.jus.br/`,tjdft:n=>`https://pje.tjdft.jus.br/pje/`,tjms:n=>`https://www5.tjms.jus.br/`,tjgo:n=>`https://projudi.tjgo.jus.br/BuscaProcesso`,tjpe:n=>`https://pje.tjpe.jus.br/`,tjce:n=>`https://esaj.tjce.jus.br/cpopg/open.do?processo.numero=${n}`,trf1:n=>`https://pje1g.trf1.jus.br/pje/`,trf2:n=>`https://eproc-consulta.trf2.jus.br/eproc/`,trf3:n=>`https://pje1g.trf3.jus.br/pje/`,trf4:n=>`https://eproc-consulta.trf4.jus.br/eproc/`,trf5:n=>`https://pje.trf5.jus.br/pje/`,stj:n=>`https://processo.stj.jus.br/processo/pesquisa/?q=${n}`,tst:n=>`https://consultaprocessual.tst.jus.br/`};
+function detectarTribunal(num){const l=num.replace(/\D/g,'');if(l.length<16)return null;const m={'8.26':'tjsp','8.19':'tjrj','8.13':'tjmg','8.21':'tjrs','8.16':'tjpr','8.05':'tjba','8.24':'tjsc','8.07':'tjdft','8.09':'tjgo','8.17':'tjpe','8.06':'tjce','5.01':'trf1','5.02':'trf2','5.03':'trf3','5.04':'trf4','5.05':'trf5','1.02':'stj','1.03':'tst'};return m[`${l[13]}.${l.substring(14,16)}`]||null;}
+function getUrlTribunal(num){const t=detectarTribunal(num);return t&&TRIBUNAIS_URL[t]?TRIBUNAIS_URL[t](num):null;}
+function escHtml(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+const consultaId = window.location.pathname.split('/').filter(Boolean).pop() || '';
+const container = document.getElementById('app');
+
+async function carregar(){
+    try{
+        const res=await fetch('/api/resultados/'+encodeURIComponent(consultaId));
+        if(!res.ok)throw new Error('Consulta não encontrada ou expirada');
+        const data=await res.json();
+        renderizar(data);
+    }catch(err){
+        container.innerHTML=`<div class="erro"><h2>❌ Erro</h2><p>${err.message}</p></div>`;
+    }
+}
+
+function renderizar(data){
+    const{resultados,label,query_texto,telefones}=data;
+    const lista=resultados||[];
+    let html='';
+
+    // Resumo
+    html+='<div class="resumo">';
+    html+=`<h2>📊 Resultados da Busca</h2>`;
+    html+='<div class="resumo-info">';
+    if(label)html+=`<div>Busca: <span>${escHtml(label)}</span></div>`;
+    if(query_texto)html+=`<div>Consulta: <span>${escHtml(query_texto)}</span></div>`;
+    html+=`<div>Total: <span>${lista.length} processos</span></div>`;
+    html+='</div></div>';
+
+    // Telefones
+    if(telefones&&telefones.length>0){
+        html+='<div class="telefone-box"><h3>📞 Telefones Encontrados</h3>';
+        for(const tel of telefones){
+            html+=`<div class="telefone-item">${escHtml(tel.nome)}: <span style="color:#3fb950;font-weight:bold">${escHtml(tel.numero)}</span></div>`;
+        }
+        html+='</div>';
+    }
+
+    // Contador
+    html+=`<div class="contador">📋 ${lista.length} processo(s) encontrado(s)</div>`;
+
+    // Cards de processos
+    for(let i=0;i<lista.length;i++){
+        const p=lista[i];
+        const num=p.numero||'N/A';
+        const urlTrib=getUrlTribunal(num);
+        const linkDetalhe=`/processo/${encodeURIComponent(num)}`;
+
+        html+='<div class="processo-card">';
+        html+='<div class="proc-header">';
+        html+=`<div class="proc-numero">📄 ${escHtml(num)}</div>`;
+        if(p.situacao)html+=`<div class="proc-badge">${escHtml(p.situacao)}</div>`;
+        html+='</div>';
+
+        html+='<div class="proc-info">';
+        if(p.tribunal||p.tribunal_descricao)html+=`<div class="proc-field">Tribunal: <span>${escHtml(p.tribunal||p.tribunal_descricao)}</span></div>`;
+        if(p.classe)html+=`<div class="proc-field">Classe: <span>${escHtml(p.classe)}</span></div>`;
+        if(p.assunto)html+=`<div class="proc-field">Assunto: <span>${escHtml(p.assunto)}</span></div>`;
+        if(p.area)html+=`<div class="proc-field">Área: <span>${escHtml(p.area)}</span></div>`;
+        if(p.orgaoJulgador)html+=`<div class="proc-field">Órgão: <span>${escHtml(p.orgaoJulgador)}</span></div>`;
+        if(p.relator)html+=`<div class="proc-field">Relator: <span>${escHtml(p.relator)}</span></div>`;
+        if(p.valor_causa)html+=`<div class="proc-field">Valor: <span>${escHtml(p.valor_causa)}</span></div>`;
+        if(p.data)html+=`<div class="proc-field">Início: <span>${escHtml(p.data)}</span></div>`;
+        html+='</div>';
+
+        // Polos
+        if(p.polo_ativo||p.polo_passivo){
+            html+='<div class="proc-partes">';
+            if(p.polo_ativo)html+=`<div class="proc-polo proc-polo-ativo">🟢 Autor: ${escHtml(p.polo_ativo)}</div>`;
+            if(p.polo_passivo)html+=`<div class="proc-polo proc-polo-passivo">🔴 Réu: ${escHtml(p.polo_passivo)}</div>`;
+            html+='</div>';
+        }
+
+        // Botões
+        html+='<div class="proc-actions">';
+        html+=`<a href="${linkDetalhe}" target="_blank" class="btn btn-laranja btn-sm">📋 Ver Detalhes</a>`;
+        if(urlTrib)html+=`<a href="${urlTrib}" target="_blank" class="btn btn-verde btn-sm">⚖️ Ver no Tribunal</a>`;
+        html+=`<a href="/api/processo/${encodeURIComponent(num)}/pdf" target="_blank" class="btn btn-pdf btn-sm">📥 PDF</a>`;
+        html+='</div>';
+        html+='</div>';
+    }
+
+    container.innerHTML=html;
+    document.title=`${lista.length} Processos - Processo Bot CNJ`;
+}
+
+carregar();
+</script>
+</body>
+</html>

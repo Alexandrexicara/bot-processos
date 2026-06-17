@@ -1,4 +1,5 @@
 const TelegramBot = require('node-telegram-bot-api');
+const crypto = require('crypto');
 const pool = require('./db');
 const { consultarProcesso } = require('./apiRouter');
 const { parseMensagem } = require('./parser');
@@ -209,8 +210,8 @@ async function iniciarBot(token, userId) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// MODO ARQUIVO: Busca múltiplos resultados e envia como .txt
-// (igual ao bot da referência: Buscando → Encontrados → Gerando → Enviar arquivo)
+// MODO LINK: Busca múltiplos resultados e envia LINK para página web
+// O usuário clica no link e vê todos os processos com links para tribunais
 // ═══════════════════════════════════════════════════════════
 async function processarConsultaArquivo(bot, chatId, query, userId, label) {
     // 1. "Buscando processos..."
@@ -241,7 +242,7 @@ async function processarConsultaArquivo(bot, chatId, query, userId, label) {
 
         // 2. "✅ Encontrados X processos"
         await bot.editMessageText(
-            `✅ Encontrados ${lista.length} processos\n\n⏳ Gerando arquivo detalhes.txt...`,
+            `✅ Encontrados ${lista.length} processos\n\n⏳ Gerando link com todos os detalhes...`,
             { chat_id: chatId, message_id: msgBuscando.message_id }
         );
 
@@ -259,40 +260,42 @@ async function processarConsultaArquivo(bot, chatId, query, userId, label) {
             }
         }
 
-        // 3. Gerar arquivo .txt completo
-        const txtContent = gerarArquivoDetalhes(lista, query, label);
-        const txtBuffer = Buffer.from(txtContent, 'utf-8');
-
-        // Nome do arquivo
-        let fileName = '';
-        if (query.tipo === 'oab') {
-            fileName = `temp_${query.uf}${query.numero}_detalhes.txt`;
-        } else if (query.tipo === 'cpf' || query.tipo === 'cnpj') {
-            fileName = `temp_${query.numero}_detalhes.txt`;
-        } else {
-            fileName = `temp_${label.replace(/\s+/g, '_')}_detalhes.txt`;
-        }
-
-        // Coletar telefones encontrados
+        // 3. Gerar ID único para a consulta pública
+        const consultaId = crypto.randomBytes(16).toString('hex');
         const telefones = coletarTelefones(lista);
+
+        // 4. Salvar consulta pública no banco
+        const queryTexto = query.tipo === 'oab'
+            ? `OAB ${query.uf} ${query.numero}`
+            : `${query.tipo}: ${query.numero}`;
+
+        await pool.query(
+            `INSERT INTO consultas_publicas (id, tipo, query_texto, label, resultados, telefones)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [consultaId, query.tipo || 'outro', queryTexto, label, JSON.stringify(lista), JSON.stringify(telefones)]
+        );
+
+        // 5. Gerar o link público
+        const linkPublico = BASE_URL ? `${BASE_URL}/resultados/${consultaId}` : `https://bot-processos.onrender.com/resultados/${consultaId}`;
+
+        // 6. Enviar LINK clicável com resumo
         const temTelefones = telefones.length > 0;
-
-        // 4. Enviar arquivo como documento
-        const caption = 
-            `📄 Arquivo detalhes.txt gerado\n\n` +
+        const msgFinal =
+            `✅ *${lista.length} processo(s) encontrado(s)*\n\n` +
+            `🔗 Clique no link abaixo para ver todos os detalhes:\n` +
+            `${linkPublico}\n\n` +
             `${query.tipo === 'oab' ? `OAB: ${query.uf}${query.numero}` : `Busca: ${label}`}\n` +
-            `Processos: ${lista.length}\n` +
-            `${temTelefones ? '📞 Telefones incluídos nos detalhes' : ''}`;
+            `${temTelefones ? '📞 Telefones encontrados — veja na página' : ''}\n` +
+            `\n💡 Cada processo tem link direto para o tribunal`;
 
-        await bot.sendDocument(chatId, txtBuffer, {
-            caption: caption,
-            parse_mode: 'HTML'
-        }, {
-            filename: fileName,
-            contentType: 'text/plain'
+        await bot.editMessageText(msgFinal, {
+            chat_id: chatId,
+            message_id: msgBuscando.message_id,
+            parse_mode: 'Markdown',
+            disable_web_page_preview: false
         });
 
-        // 5. Botões de ação: PDF completo
+        // 7. Botões de ação: PDF completo
         const botoes = {
             inline_keyboard: [
                 [
@@ -304,7 +307,7 @@ async function processarConsultaArquivo(bot, chatId, query, userId, label) {
 
     } catch (err) {
         clearInterval(typingInterval);
-        console.error('[BotManager] Erro na consulta arquivo:', err);
+        console.error('[BotManager] Erro na consulta:', err);
         try {
             await bot.editMessageText('⚠️ Erro ao consultar. Tente novamente mais tarde.', {
                 chat_id: chatId, message_id: msgBuscando.message_id
