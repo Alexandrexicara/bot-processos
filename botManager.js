@@ -307,7 +307,38 @@ async function processarConsultaArquivo(bot, chatId, query, userId, label) {
             }
         }
 
-        // 7. Mensagem final com link geral
+        // 7. Gerar e enviar arquivo detalhes.txt como DOCUMENTO (igual ao SupremoDo7)
+        const txtContent = gerarDetalhesTxt(lista, query, label, linkPublico);
+        const txtBuffer = Buffer.from(txtContent, 'utf-8');
+
+        // Nome do arquivo: temp_UF_NUMERO_detalhes.txt
+        let fileName = '';
+        if (query.tipo === 'oab') {
+            fileName = `temp_${query.uf}${query.numero}_detalhes.txt`;
+        } else if (query.tipo === 'cpf' || query.tipo === 'cnpj') {
+            fileName = `temp_${query.numero}_detalhes.txt`;
+        } else {
+            fileName = `temp_${label.replace(/\s+/g, '_')}_detalhes.txt`;
+        }
+
+        // Coletar telefones (já coletados antes, reutilizar)
+        const temTelefones = telefones.length > 0;
+
+        const caption =
+            `📄 Arquivo detalhes.txt gerado\n\n` +
+            `${query.tipo === 'oab' ? `OAB: ${query.uf}${query.numero}` : `Busca: ${label}`}\n` +
+            `Processos: ${lista.length}\n` +
+            `${temTelefones ? '📞 Telefones incluídos nos detalhes' : ''}`;
+
+        await bot.sendDocument(chatId, txtBuffer, {
+            caption: caption,
+            parse_mode: 'HTML'
+        }, {
+            filename: fileName,
+            contentType: 'text/plain'
+        });
+
+        // 8. Mensagem final
         const msgFinal =
             `✅ <b>${lista.length} processo(s) encontrado(s)</b>\n\n` +
             `📄 <a href="${linkPublico}">detalhes.txt</a>\n\n` +
@@ -319,7 +350,7 @@ async function processarConsultaArquivo(bot, chatId, query, userId, label) {
             disable_web_page_preview: false
         });
 
-        // 7. Botões de ação: PDF completo
+        // 9. Botões de ação: PDF completo
         const botoes = {
             inline_keyboard: [
                 [
@@ -491,6 +522,123 @@ function formatarProcessoMsg(p, linkPublico) {
             }
         } else if (p.polo_passivo) {
             linhas.push(`- NOME: ${p.polo_passivo}`);
+        }
+    }
+
+    return linhas.join('\n');
+}
+
+// ═══════════════════════════════════════════════════════════
+// Gerar conteúdo do detalhes.txt (formato idêntico ao SupremoDo7)
+// Enviado como DOCUMENTO no Telegram
+// ═══════════════════════════════════════════════════════════
+function gerarDetalhesTxt(lista, query, label, linkPublico) {
+    const linhas = [];
+
+    for (let i = 0; i < lista.length; i++) {
+        const p = lista[i];
+        const num = p.numero || 'N/A';
+        const linkProc = `${linkPublico}/processo/${encodeURIComponent(num)}`;
+
+        // Separador entre processos
+        if (i > 0) {
+            linhas.push('');
+            linhas.push('═'.repeat(60));
+            linhas.push('');
+        }
+
+        // Cabeçalho do processo
+        const labelTipo = query.tipo === 'oab' ? `OAB: ${query.uf}${query.numero}` : label;
+        linhas.push(labelTipo);
+        linhas.push(`NOME: Advogado: temp_${label.replace(/\s+/g, '_')}_detalhes.txt`);
+        linhas.push(`PROCESSO: ${num}`);
+        linhas.push(`LINK: ${linkProc}`);
+        linhas.push(`PROCURADOR: ${num}`);
+        linhas.push(`TRIBUNAL: ${p.tribunal || p.tribunal_descricao || 'N/A'}`);
+        if (p.classe) linhas.push(`CLASSE: ${p.classe}`);
+        if (p.assunto) linhas.push(`ASSUNTO: ${p.assunto}`);
+        if (p.valor_causa) linhas.push(`VALOR: ${p.valor_causa}`);
+        if (p.data) linhas.push(`DATA INICIO: ${p.data}`);
+        if (p.data_ultima_movimentacao) linhas.push(`DATA ULTIMO MOVIMENTO: ${p.data_ultima_movimentacao}`);
+        if (p.orgaoJulgador) linhas.push(`ORGAO JULGADOR: ${p.orgaoJulgador}`);
+
+        // Última movimentação
+        if (p.movimentacoes && p.movimentacoes.length > 0) {
+            const ultima = p.movimentacoes[0];
+            linhas.push(`ULTIMA MOVIMENTACAO: ${ultima.data || ''}`);
+            linhas.push(`  DESCRICAO: ${ultima.descricao || ultima.texto || ''}`);
+        }
+
+        linhas.push('');
+
+        // Polo Ativo
+        const poloAtivo = (p.partes || []).filter(pt => {
+            const tipo = (pt.tipo || pt.polo || '').toLowerCase();
+            return tipo.includes('ativo') || tipo.includes('autor') || tipo.includes('requerente') || tipo.includes('impugnante');
+        });
+
+        if (poloAtivo.length > 0 || p.polo_ativo) {
+            linhas.push('POLO ATIVO:');
+            if (poloAtivo.length > 0) {
+                for (const parte of poloAtivo) {
+                    linhas.push(`- NOME: ${parte.nome || 'N/A'}`);
+                    if (parte.cpf) linhas.push(`- DOC: ${parte.cpf}`);
+                    if (parte.cnpj) linhas.push(`- DOC: ${parte.cnpj}`);
+                    // Telefones
+                    const tels = [];
+                    if (parte.telefone) tels.push(parte.telefone);
+                    if (parte.telefones) tels.push(...parte.telefones);
+                    if (tels.length > 0) {
+                        linhas.push('- TELEFONES:');
+                        tels.forEach((t, idx) => linhas.push(`  ${idx + 1}. 📞 ${t}`));
+                    }
+                    // Advogados
+                    if (parte.advogados && parte.advogados.length > 0) {
+                        for (const adv of parte.advogados) {
+                            const nomeAdv = typeof adv === 'string' ? adv : (adv.nome || '');
+                            const cpfAdv = typeof adv === 'object' ? (adv.cpf || '') : '';
+                            linhas.push(`- ADVOGADO: ${nomeAdv}${cpfAdv ? ' (CPF: ' + cpfAdv + ')' : ''}`);
+                        }
+                    }
+                }
+            } else if (p.polo_ativo) {
+                linhas.push(`- NOME: ${p.polo_ativo}`);
+            }
+        }
+
+        linhas.push('');
+
+        // Polo Passivo
+        const poloPassivo = (p.partes || []).filter(pt => {
+            const tipo = (pt.tipo || pt.polo || '').toLowerCase();
+            return tipo.includes('passivo') || tipo.includes('reu') || tipo.includes('r\u00e9u') || tipo.includes('requerido') || tipo.includes('impugnado');
+        });
+
+        if (poloPassivo.length > 0 || p.polo_passivo) {
+            linhas.push('POLO PASSIVO:');
+            if (poloPassivo.length > 0) {
+                for (const parte of poloPassivo) {
+                    linhas.push(`- NOME: ${parte.nome || 'N/A'}`);
+                    if (parte.cpf) linhas.push(`- DOC: ${parte.cpf}`);
+                    if (parte.cnpj) linhas.push(`- DOC: ${parte.cnpj}`);
+                    const tels = [];
+                    if (parte.telefone) tels.push(parte.telefone);
+                    if (parte.telefones) tels.push(...parte.telefones);
+                    if (tels.length > 0) {
+                        linhas.push('- TELEFONES:');
+                        tels.forEach((t, idx) => linhas.push(`  ${idx + 1}. 📞 ${t}`));
+                    }
+                    if (parte.advogados && parte.advogados.length > 0) {
+                        for (const adv of parte.advogados) {
+                            const nomeAdv = typeof adv === 'string' ? adv : (adv.nome || '');
+                            const cpfAdv = typeof adv === 'object' ? (adv.cpf || '') : '';
+                            linhas.push(`- ADVOGADO: ${nomeAdv}${cpfAdv ? ' (CPF: ' + cpfAdv + ')' : ''}`);
+                        }
+                    }
+                }
+            } else if (p.polo_passivo) {
+                linhas.push(`- NOME: ${p.polo_passivo}`);
+            }
         }
     }
 
