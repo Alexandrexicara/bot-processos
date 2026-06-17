@@ -235,7 +235,7 @@ app.get('/processos/:id/pdf', authMiddleware, async (req, res) => {
     }
 });
 
-// Gerar PDF de todos os processos do usuário
+// Gerar PDF de todos os processos do usuário (com dados completos da API)
 app.get('/processos/todos/pdf', authMiddleware, async (req, res) => {
     try {
         let query = "SELECT p.*, u.email as usuario_email FROM processos p JOIN usuarios u ON p.usuario_id = u.id";
@@ -246,13 +246,72 @@ app.get('/processos/todos/pdf', authMiddleware, async (req, res) => {
         }
         const data = await pool.query(query, params);
         
-        const pdfBuffer = await gerarPDFProcesso(data.rows);
+        // Consulta a API para cada processo para ter dados completos
+        const dadosCompletos = [];
+        for (const proc of data.rows) {
+            try {
+                const userRes = await pool.query('SELECT * FROM usuarios WHERE id=$1', [proc.usuario_id]);
+                const user = userRes.rows[0];
+                const resultados = await consultarProcesso(proc.numero, user);
+                const lista = Array.isArray(resultados) ? resultados : [resultados];
+                const detalhe = lista.find(r => r.numero === proc.numero) || lista[0] || {};
+                dadosCompletos.push({ ...detalhe, numero: proc.numero, ultimo_status: proc.ultimo_status });
+            } catch (e) {
+                console.error(`[PDF Todos] Erro ao consultar ${proc.numero}:`, e.message);
+                dadosCompletos.push({ numero: proc.numero, ultimo_status: proc.ultimo_status });
+            }
+        }
+        
+        const pdfBuffer = await gerarPDFProcesso(dadosCompletos);
         
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', 'attachment; filename="todos_processos.pdf"');
         res.send(pdfBuffer);
     } catch (err) {
         console.error('[PDF Todos] Erro:', err.message);
+        res.status(500).json({ error: 'Erro ao gerar PDF: ' + err.message });
+    }
+});
+
+// Gerar PDF de processos selecionados (por IDs)
+app.post('/processos/selecionados/pdf', authMiddleware, async (req, res) => {
+    try {
+        const { ids } = req.body;
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ error: 'Nenhum processo selecionado' });
+        }
+
+        let query = "SELECT p.*, u.email as usuario_email FROM processos p JOIN usuarios u ON p.usuario_id = u.id WHERE p.id = ANY($1)";
+        let params = [ids];
+        if (req.user.tipo !== 'admin') {
+            query += " AND p.usuario_id = $2";
+            params = [ids, req.user.id];
+        }
+        const data = await pool.query(query, params);
+        
+        // Consulta a API para cada processo selecionado
+        const dadosCompletos = [];
+        for (const proc of data.rows) {
+            try {
+                const userRes = await pool.query('SELECT * FROM usuarios WHERE id=$1', [proc.usuario_id]);
+                const user = userRes.rows[0];
+                const resultados = await consultarProcesso(proc.numero, user);
+                const lista = Array.isArray(resultados) ? resultados : [resultados];
+                const detalhe = lista.find(r => r.numero === proc.numero) || lista[0] || {};
+                dadosCompletos.push({ ...detalhe, numero: proc.numero, ultimo_status: proc.ultimo_status });
+            } catch (e) {
+                console.error(`[PDF Selecionados] Erro ao consultar ${proc.numero}:`, e.message);
+                dadosCompletos.push({ numero: proc.numero, ultimo_status: proc.ultimo_status });
+            }
+        }
+        
+        const pdfBuffer = await gerarPDFProcesso(dadosCompletos);
+        
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename="processos_selecionados.pdf"');
+        res.send(pdfBuffer);
+    } catch (err) {
+        console.error('[PDF Selecionados] Erro:', err.message);
         res.status(500).json({ error: 'Erro ao gerar PDF: ' + err.message });
     }
 });

@@ -5,6 +5,11 @@ if (!token) {
     window.location.href = '/login.html';
 }
 
+// ── Seleção de processos ──
+let processosSelecionados = new Set();
+let processosData = []; // cache dos dados da tabela
+let previewBlobUrl = null; // URL do preview atual
+
 // Configurar UI baseado no tipo de usuário
 function configurarUI() {
     document.getElementById('user-email').textContent = user.email;
@@ -40,7 +45,6 @@ async function carregarProcessos() {
             headers: { 'Authorization': 'Bearer ' + token }
         });
 
-        // Token expirado ou inválido — redireciona para login
         if (res.status === 401 || res.status === 403) {
             logout();
             return;
@@ -48,21 +52,25 @@ async function carregarProcessos() {
 
         const dados = await res.json();
 
-        // Verifica se é um array antes de iterar
         if (!Array.isArray(dados)) {
             console.warn('Resposta inesperada de /processos:', dados);
             return;
         }
 
+        processosData = dados;
         const tbody = document.querySelector("#sec-processos tbody");
         tbody.innerHTML = "";
 
         dados.forEach(p => {
             const atualizado = p.atualizado_em ? new Date(p.atualizado_em).toLocaleString() : '-';
             const usuarioCol = user.tipo === 'admin' ? `<td>${p.usuario_email || '-'}</td>` : '';
+            const checked = processosSelecionados.has(p.id) ? 'checked' : '';
             
             tbody.innerHTML += `
             <tr>
+                <td class="checkbox-col">
+                    <input type="checkbox" data-id="${p.id}" ${checked} onchange="atualizarSelecao()">
+                </td>
                 <td>${p.numero}</td>
                 <td>${p.ultimo_status || '-'}</td>
                 <td>${atualizado}</td>
@@ -73,10 +81,15 @@ async function carregarProcessos() {
                                    background:#007bff; color:#fff; border:none;">
                         👁️ Ver
                     </button>
+                    <button onclick="previewPDF(${p.id}, '${p.numero}')" 
+                            style="padding:4px 10px; font-size:11px; border-radius:4px; cursor:pointer;
+                                   background:#FF5E00; color:#fff; border:none;">
+                        👁️ PDF
+                    </button>
                     <button onclick="baixarPDF(${p.id}, '${p.numero}')" 
                             style="padding:4px 10px; font-size:11px; border-radius:4px; cursor:pointer;
                                    background:#ff4444; color:#fff; border:none;">
-                        📥 PDF
+                        📥
                     </button>
                     <button onclick="compartilharProcesso(${p.id}, '${p.numero}')" 
                             style="padding:4px 10px; font-size:11px; border-radius:4px; cursor:pointer;
@@ -86,11 +99,364 @@ async function carregarProcessos() {
                 </td>
             </tr>`;
         });
+        
+        atualizarSelecao();
     } catch (err) {
         console.error("Erro ao carregar processos:", err);
     }
 }
 
+// ── Seleção ──
+function atualizarSelecao() {
+    processosSelecionados.clear();
+    document.querySelectorAll('#sec-processos tbody input[type="checkbox"]:checked').forEach(cb => {
+        processosSelecionados.add(parseInt(cb.dataset.id));
+    });
+    
+    const bar = document.getElementById('selecao-bar');
+    const count = document.getElementById('selecao-count');
+    
+    if (processosSelecionados.size > 0) {
+        bar.style.display = 'flex';
+        count.textContent = processosSelecionados.size + ' selecionado(s)';
+    } else {
+        bar.style.display = 'none';
+    }
+}
+
+function toggleSelecaoTodos(el) {
+    document.querySelectorAll('#sec-processos tbody input[type="checkbox"]').forEach(cb => {
+        cb.checked = el.checked;
+    });
+    atualizarSelecao();
+}
+
+function limparSelecao() {
+    processosSelecionados.clear();
+    document.querySelectorAll('#sec-processos input[type="checkbox"]').forEach(cb => cb.checked = false);
+    atualizarSelecao();
+}
+
+async function previewSelecionados() {
+    if (processosSelecionados.size === 0) return alert('Selecione pelo menos um processo');
+    
+    try {
+        document.getElementById('preview-title').textContent = `📄 Visualizando ${processosSelecionados.size} processo(s)...`;
+        mostrarPreviewLoading();
+        
+        const res = await fetch('/processos/selecionados/pdf', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token 
+            },
+            body: JSON.stringify({ ids: Array.from(processosSelecionados) })
+        });
+        if (!res.ok) throw new Error('Erro ao gerar PDF');
+        await abrirPreview(res, `${processosSelecionados.size} processos selecionados`);
+    } catch (err) {
+        alert('Erro ao gerar PDF: ' + err.message);
+        fecharPreview();
+    }
+}
+
+async function baixarSelecionados() {
+    if (processosSelecionados.size === 0) return alert('Selecione pelo menos um processo');
+    
+    try {
+        const res = await fetch('/processos/selecionados/pdf', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token 
+            },
+            body: JSON.stringify({ ids: Array.from(processosSelecionados) })
+        });
+        if (!res.ok) throw new Error('Erro ao gerar PDF');
+        downloadFromResponse(res, 'processos_selecionados.pdf');
+    } catch (err) {
+        alert('Erro ao gerar PDF: ' + err.message);
+    }
+}
+
+// ── Preview PDF ──
+function mostrarPreviewLoading() {
+    document.getElementById('pdf-preview-modal').style.display = 'block';
+    document.getElementById('pdf-preview-frame').srcdoc = `
+        <html><body style="background:#222; color:#fff; display:flex; justify-content:center; align-items:center; height:100vh; font-family:sans-serif;">
+            <div style="text-align:center;">
+                <div style="font-size:40px; animation:spin 1s linear infinite; display:inline-block;">⚡</div>
+                <p>Gerando PDF com dados completos...</p>
+                <style>@keyframes spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }</style>
+            </div>
+        </body></html>`;
+}
+
+async function abrirPreview(res, titulo) {
+    const blob = await res.blob();
+    if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
+    previewBlobUrl = URL.createObjectURL(blob);
+    
+    document.getElementById('preview-title').textContent = '📄 ' + titulo;
+    document.getElementById('pdf-preview-frame').src = previewBlobUrl;
+    document.getElementById('pdf-preview-modal').style.display = 'block';
+}
+
+function fecharPreview() {
+    document.getElementById('pdf-preview-modal').style.display = 'none';
+}
+
+function baixarPDFdoPreview() {
+    if (!previewBlobUrl) return;
+    const a = document.createElement('a');
+    a.href = previewBlobUrl;
+    a.download = 'processo.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+}
+
+function imprimirPreview() {
+    const frame = document.getElementById('pdf-preview-frame');
+    if (frame.src && frame.src !== 'about:blank') {
+        frame.contentWindow.print();
+    }
+}
+
+async function previewPDF(id, numero) {
+    try {
+        document.getElementById('preview-title').textContent = `📄 Processo ${numero} — Gerando...`;
+        mostrarPreviewLoading();
+        
+        const res = await fetch('/processos/' + id + '/pdf', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) throw new Error('Erro ao gerar PDF');
+        await abrirPreview(res, `Processo ${numero}`);
+    } catch (err) {
+        fecharPreview();
+        alert('Erro ao gerar PDF: ' + err.message);
+    }
+}
+
+async function previewTodosPDF() {
+    try {
+        document.getElementById('preview-title').textContent = '📄 Exportando todos os processos...';
+        mostrarPreviewLoading();
+        
+        const res = await fetch('/processos/todos/pdf', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) throw new Error('Erro ao gerar PDF');
+        await abrirPreview(res, 'Todos os processos');
+    } catch (err) {
+        fecharPreview();
+        alert('Erro ao exportar: ' + err.message);
+    }
+}
+
+// ── Utils ──
+async function downloadFromResponse(res, filename) {
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+
+// ── DETALHES DO PROCESSO ──
+async function verDetalhes(id) {
+    document.querySelectorAll('.secao').forEach(s => s.classList.remove('active'));
+    document.getElementById('sec-detalhes').classList.add('active');
+    document.getElementById('detalhes-content').innerHTML = '<div class="loading-spinner">⚡ Buscando dados atualizados na API...</div>';
+
+    try {
+        const res = await fetch('/processos/' + id + '/detalhes', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (res.status === 401 || res.status === 403) { logout(); return; }
+        const data = await res.json();
+        if (data.error) {
+            document.getElementById('detalhes-content').innerHTML = `<p style="color:#ff4444;">Erro: ${data.error}</p>`;
+            return;
+        }
+        renderizarDetalhes(data, id);
+    } catch (err) {
+        document.getElementById('detalhes-content').innerHTML = `<p style="color:#ff4444;">Erro ao carregar: ${err.message}</p>`;
+    }
+}
+
+function renderizarDetalhes(p, id) {
+    const d = p.detalhes || {};
+    
+    // ── Dados Básicos ──
+    const camposBasicos = [
+        ['Número', p.numero],
+        ['Tribunal', d.tribunal || d.tribunal_descricao],
+        ['Classe', d.classe],
+        ['Assunto', d.assunto],
+        ['Área', d.area],
+        ['Grau', d.grau],
+        ['Situação', d.situacao],
+        ['Órgão Julgador', d.orgaoJulgador],
+        ['Relator', d.relator],
+        ['Valor da Causa', d.valor_causa],
+        ['Sistema', d.sistema],
+        ['Fonte', d.fonte || p.fonte],
+        ['Segredo de Justiça', d.segredo_justica ? 'Sim' : ''],
+        ['Estado', d.estado],
+        ['Unidade', d.unidade],
+        ['Data de Início', d.data],
+        ['Última Movimentação', d.data_ultima_movimentacao || d.ultimo_status],
+        ['Total Movimentações', d.quantidade_movimentacoes],
+        ['Fase', d.fase],
+        ['Origem', d.origem],
+        ['Atualizado', p.atualizado_em ? new Date(p.atualizado_em).toLocaleString() : '-']
+    ];
+
+    let camposHTML = '';
+    for (const [label, valor] of camposBasicos) {
+        if (valor && valor !== '' && valor !== 'N/A' && valor !== '-' && valor !== false) {
+            camposHTML += `<div class="detalhe-field"><span class="detalhe-label">${label}</span><span class="detalhe-valor">${valor}</span></div>`;
+        }
+    }
+
+    // ── Polos ──
+    let polosHTML = '';
+    if (d.polo_ativo || d.polo_passivo) {
+        polosHTML = `<div class="info-section"><h5>⚖️ Polos</h5>`;
+        if (d.polo_ativo) polosHTML += `<div class="detalhe-field"><span class="detalhe-label">Polo Ativo (Autor)</span><span class="detalhe-valor">${d.polo_ativo}</span></div>`;
+        if (d.polo_passivo) polosHTML += `<div class="detalhe-field"><span class="detalhe-label">Polo Passivo (Réu)</span><span class="detalhe-valor">${d.polo_passivo}</span></div>`;
+        polosHTML += '</div>';
+    }
+
+    // ── Partes e Advogados ──
+    let partesHTML = '';
+    if (d.partes && d.partes.length > 0) {
+        partesHTML = `<div class="info-section"><h5>👥 Partes e Advogados</h5>`;
+        for (const parte of d.partes) {
+            const tipo = parte.tipo || parte.polo || 'Parte';
+            let doc = '';
+            if (parte.cpf) doc = `CPF: ${parte.cpf}`;
+            else if (parte.cnpj) doc = `CNPJ: ${parte.cnpj}`;
+            
+            partesHTML += `<div class="parte-item">
+                <div class="parte-tipo">${tipo}</div>
+                <div class="parte-nome">${parte.nome || 'N/A'}</div>
+                ${doc ? `<div class="parte-doc">${doc}</div>` : ''}
+                ${parte.advogados && parte.advogados.length > 0 ? `<div class="parte-adv">👨‍⚖️ Advogado(s): ${parte.advogados.join(', ')}</div>` : ''}
+            </div>`;
+        }
+        partesHTML += '</div>';
+    }
+
+    // ── Informações Complementares ──
+    let infoCompHTML = '';
+    if (d.info_complementares && Object.keys(d.info_complementares).length > 0) {
+        infoCompHTML = `<div class="info-section"><h5>📋 Informações Complementares</h5>`;
+        for (const [chave, valor] of Object.entries(d.info_complementares)) {
+            const label = chave.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            infoCompHTML += `<div class="detalhe-field"><span class="detalhe-label">${label}</span><span class="detalhe-valor">${valor}</span></div>`;
+        }
+        infoCompHTML += '</div>';
+    }
+
+    // ── Movimentações ──
+    let movHTML = '';
+    if (d.movimentacoes && d.movimentacoes.length > 0) {
+        movHTML = `<div class="info-section"><h5>📋 Últimas Movimentações (${d.movimentacoes.length})</h5>`;
+        for (const mov of d.movimentacoes.slice(0, 20)) {
+            movHTML += `<div class="mov-item"><span class="mov-data">${mov.data || ''}</span> <span class="mov-desc">${mov.descricao || mov.texto || ''}</span></div>`;
+        }
+        movHTML += '</div>';
+    }
+
+    document.getElementById('detalhes-content').innerHTML = `
+        <div class="acoes-bar">
+            <button onclick="previewPDF(${id}, '${p.numero}')" class="btn-acao btn-pdf">👁️ Visualizar PDF</button>
+            <button onclick="baixarPDF(${id}, '${p.numero}')" class="btn-acao" style="background:#cc0000; color:#fff;">📥 Baixar PDF</button>
+            <button onclick="imprimirDetalhes()" class="btn-acao btn-imprimir">🖨️ Imprimir</button>
+            <button onclick="compartilharProcesso(${id}, '${p.numero}')" class="btn-acao btn-compartilhar">📤 Compartilhar</button>
+        </div>
+        <div class="detalhe-card" id="detalhe-imprimivel">
+            <h4>📄 Processo ${p.numero}</h4>
+            <div class="info-section"><h5>📌 Dados do Processo</h5>${camposHTML}</div>
+            ${polosHTML}
+            ${partesHTML}
+            ${infoCompHTML}
+            ${movHTML}
+        </div>
+    `;
+}
+
+function voltarProcessos() {
+    document.querySelectorAll('.secao').forEach(s => s.classList.remove('active'));
+    document.getElementById('sec-processos').classList.add('active');
+    document.querySelectorAll('.menu-btn')[0].classList.add('active');
+}
+
+async function baixarPDF(id, numero) {
+    try {
+        const res = await fetch('/processos/' + id + '/pdf', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) throw new Error('Erro ao gerar PDF');
+        downloadFromResponse(res, 'processo_' + (numero || '').replace(/[^0-9]/g, '') + '.pdf');
+    } catch (err) {
+        alert('Erro ao gerar PDF: ' + err.message);
+    }
+}
+
+function imprimirDetalhes() {
+    const el = document.getElementById('detalhe-imprimivel');
+    if (!el) return;
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+        <html><head><title>Processo - Impressão</title>
+        <style>
+            body { font-family: Arial; padding: 20px; color: #333; }
+            .detalhe-card { border: 1px solid #ddd; padding: 20px; border-radius: 8px; }
+            .detalhe-field { display:flex; gap:10px; padding:8px 0; border-bottom:1px solid #eee; }
+            .detalhe-label { color:#666; min-width:140px; font-weight:bold; }
+            .parte-item { border:1px solid #ddd; padding:8px; margin:4px 0; border-radius:4px; }
+            .parte-tipo { color:#FF5E00; font-weight:bold; font-size:11px; }
+            .parte-adv { color:#0066cc; font-size:12px; }
+            .mov-item { padding:4px 0; border-bottom:1px solid #eee; font-size:12px; }
+            .mov-data { font-weight:bold; color:#FF5E00; }
+            .info-section { margin-top:15px; }
+            .info-section h5 { color:#333; border-bottom:1px solid #ddd; padding-bottom:4px; }
+            h4 { color: #333; }
+        </style></head><body>
+        <h2>Processo Bot CNJ - Relatório</h2>
+        <p>Impresso em: ${new Date().toLocaleString('pt-BR')}</p>
+        ${el.innerHTML}
+        </body></html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+}
+
+async function compartilharProcesso(id, numero) {
+    const texto = `Processo: ${numero}\nConsultado via Processo Bot CNJ`;
+    if (navigator.share) {
+        try {
+            await navigator.share({ title: 'Processo ' + numero, text: texto });
+        } catch (e) { /* usuário cancelou */ }
+    } else {
+        try {
+            await navigator.clipboard.writeText(texto);
+            alert('📋 Informações copiadas para a área de transferência!');
+        } catch (e) {
+            prompt('Copie as informações:', texto);
+        }
+    }
+}
+
+// ── Usuários (admin) ──
 async function carregarUsuarios() {
     if (user.tipo !== 'admin') return;
 
@@ -110,7 +476,6 @@ async function carregarUsuarios() {
             const statusCor = ativo ? '#39FF14' : '#ff4444';
             const statusTexto = ativo ? '🟢 Ativo' : '🔴 Bloqueado';
 
-            // Status do pagamento
             const pgStatus = u.status_pagamento || 'pendente';
             const pgCor = pgStatus === 'aprovado' ? '#39FF14' : pgStatus === 'rejeitado' ? '#ff4444' : '#FFD700';
             const pgTexto = pgStatus === 'aprovado' ? '✅ Pago' : pgStatus === 'rejeitado' ? '❌ Negado' : '⏳ Pendente';
@@ -174,7 +539,6 @@ async function carregarConfig() {
             <p><strong>Cadastrado em:</strong> ${new Date(dados.criado_em).toLocaleString()}</p>
         `;
 
-        // Preencher formulário com dados atuais
         if (dados.telegram_id) document.getElementById('cfg-telegram').value = dados.telegram_id;
         if (dados.bot_token) document.getElementById('cfg-bot').value = dados.bot_token;
         if (dados.api_key) document.getElementById('cfg-api').value = dados.api_key;
@@ -184,7 +548,7 @@ async function carregarConfig() {
     }
 }
 
-// Cadastrar usuário (admin)
+// ── Cadastro usuário (admin) ──
 document.getElementById('form-usuario')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const msgEl = document.getElementById('cad-msg');
@@ -223,7 +587,7 @@ document.getElementById('form-usuario')?.addEventListener('submit', async (e) =>
     }
 });
 
-// Atualizar configuração do bot (cliente)
+// ── Config do bot (cliente) ──
 document.getElementById('form-config')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const msgEl = document.getElementById('cfg-msg');
@@ -250,7 +614,7 @@ document.getElementById('form-config')?.addEventListener('submit', async (e) => 
         if (data.success) {
             msgEl.textContent = '✅ ' + data.message;
             msgEl.className = 'sucesso';
-            carregarConfig(); // recarrega os dados
+            carregarConfig();
         } else {
             msgEl.textContent = data.error || 'Erro ao salvar';
             msgEl.className = 'erro';
@@ -261,251 +625,58 @@ document.getElementById('form-config')?.addEventListener('submit', async (e) => 
     }
 });
 
+// ── Admin actions ──
 function logout() {
-    // Para o intervalo de recarga
     if (intervaloProcessos) clearInterval(intervaloProcessos);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     window.location.href = '/login.html';
 }
 
-// Bloquear/desbloquear usuário (admin)
 async function toggleUsuario(userId, novoAtivo) {
     if (!confirm('Tem certeza que deseja ' + (novoAtivo ? 'desbloquear' : 'bloquear') + ' este usuário?')) return;
-
     try {
         const res = await fetch('/usuario/' + userId, {
             method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + token
-            },
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
             body: JSON.stringify({ ativo: novoAtivo })
         });
-
         const data = await res.json();
-
-        if (data.success) {
-            carregarUsuarios();
-        } else {
-            alert('Erro: ' + (data.error || 'Falha ao atualizar'));
-        }
-    } catch (err) {
-        alert('Erro de conexão');
-    }
+        if (data.success) carregarUsuarios();
+        else alert('Erro: ' + (data.error || 'Falha ao atualizar'));
+    } catch (err) { alert('Erro de conexão'); }
 }
 
-// Aprovar pagamento (admin)
 async function aprovarPagamento(userId) {
     if (!confirm('Confirmar pagamento e liberar acesso deste usuário?')) return;
-
     try {
         const res = await fetch('/usuario/' + userId, {
             method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + token
-            },
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
             body: JSON.stringify({ ativo: true, status_pagamento: 'aprovado' })
         });
-
         const data = await res.json();
-
-        if (data.success) {
-            carregarUsuarios();
-        } else {
-            alert('Erro: ' + (data.error || 'Falha ao aprovar'));
-        }
-    } catch (err) {
-        alert('Erro de conexão');
-    }
+        if (data.success) carregarUsuarios();
+        else alert('Erro: ' + (data.error || 'Falha ao aprovar'));
+    } catch (err) { alert('Erro de conexão'); }
 }
 
-// Rejeitar pagamento (admin)
 async function rejeitarPagamento(userId) {
     if (!confirm('Rejeitar pagamento e manter usuário bloqueado?')) return;
-
     try {
         const res = await fetch('/usuario/' + userId, {
             method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + token
-            },
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
             body: JSON.stringify({ status_pagamento: 'rejeitado' })
         });
-
         const data = await res.json();
-
-        if (data.success) {
-            carregarUsuarios();
-        } else {
-            alert('Erro: ' + (data.error || 'Falha ao rejeitar'));
-        }
-    } catch (err) {
-        alert('Erro de conexão');
-    }
+        if (data.success) carregarUsuarios();
+        else alert('Erro: ' + (data.error || 'Falha ao rejeitar'));
+    } catch (err) { alert('Erro de conexão'); }
 }
 
-// ── DETALHES DO PROCESSO ──────────────────────────────
-async function verDetalhes(id) {
-    // Mostrar seção de detalhes
-    document.querySelectorAll('.secao').forEach(s => s.classList.remove('active'));
-    document.getElementById('sec-detalhes').classList.add('active');
-    document.getElementById('detalhes-content').innerHTML = '<div class="loading-spinner">⚡ Buscando dados atualizados...</div>';
-
-    try {
-        const res = await fetch('/processos/' + id + '/detalhes', {
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        if (res.status === 401 || res.status === 403) { logout(); return; }
-        const data = await res.json();
-        if (data.error) {
-            document.getElementById('detalhes-content').innerHTML = `<p style="color:#ff4444;">Erro: ${data.error}</p>`;
-            return;
-        }
-        renderizarDetalhes(data, id);
-    } catch (err) {
-        document.getElementById('detalhes-content').innerHTML = `<p style="color:#ff4444;">Erro ao carregar: ${err.message}</p>`;
-    }
-}
-
-function renderizarDetalhes(p, id) {
-    const d = p.detalhes || {};
-    const campos = [
-        ['Número', p.numero],
-        ['Tribunal', d.tribunal],
-        ['Classe', d.classe],
-        ['Grau', d.grau],
-        ['Órgão Julgador', d.orgaoJulgador],
-        ['Área', d.area],
-        ['Valor da Causa', d.valor_causa],
-        ['Polo Ativo', d.polo_ativo],
-        ['Polo Passivo', d.polo_passivo],
-        ['Sistema', d.sistema],
-        ['Fonte', d.fonte || p.fonte],
-        ['Status Atual', p.ultimo_status || d.data],
-        ['Data Início', d.data],
-        ['Última Atualização', p.atualizado_em ? new Date(p.atualizado_em).toLocaleString() : '-']
-    ];
-
-    let camposHTML = '';
-    for (const [label, valor] of campos) {
-        if (valor && valor !== '' && valor !== 'N/A' && valor !== '-') {
-            camposHTML += `<div class="detalhe-field"><span class="detalhe-label">${label}</span><span class="detalhe-valor">${valor}</span></div>`;
-        }
-    }
-
-    // Movimentações
-    let movHTML = '';
-    if (d.movimentacoes && d.movimentacoes.length > 0) {
-        movHTML = '<h4 style="color:#FF5E00; margin-top:20px;">📋 Movimentações</h4>';
-        for (const mov of d.movimentacoes.slice(0, 20)) {
-            movHTML += `<div class="detalhe-field"><span class="detalhe-label" style="min-width:100px;">${mov.data || ''}</span><span class="detalhe-valor">${mov.descricao || mov.texto || ''}</span></div>`;
-        }
-    }
-
-    document.getElementById('detalhes-content').innerHTML = `
-        <div class="acoes-bar">
-            <button onclick="baixarPDF(${id}, '${p.numero}')" class="btn-acao btn-pdf">📥 Baixar PDF</button>
-            <button onclick="imprimirDetalhes()" class="btn-acao btn-imprimir">🖨️ Imprimir</button>
-            <button onclick="compartilharProcesso(${id}, '${p.numero}')" class="btn-acao btn-compartilhar">📤 Compartilhar</button>
-        </div>
-        <div class="detalhe-card" id="detalhe-imprimivel">
-            <h4>📄 Processo ${p.numero}</h4>
-            ${camposHTML}
-            ${movHTML}
-        </div>
-    `;
-}
-
-function voltarProcessos() {
-    document.querySelectorAll('.secao').forEach(s => s.classList.remove('active'));
-    document.getElementById('sec-processos').classList.add('active');
-    document.querySelectorAll('.menu-btn')[0].classList.add('active');
-}
-
-async function baixarPDF(id, numero) {
-    try {
-        const res = await fetch('/processos/' + id + '/pdf', {
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        if (!res.ok) throw new Error('Erro ao gerar PDF');
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'processo_' + (numero || '').replace(/[^0-9]/g, '') + '.pdf';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-    } catch (err) {
-        alert('Erro ao gerar PDF: ' + err.message);
-    }
-}
-
-function imprimirDetalhes() {
-    const el = document.getElementById('detalhe-imprimivel');
-    if (!el) return;
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-        <html><head><title>Processo - Impressão</title>
-        <style>
-            body { font-family: Arial; padding: 20px; color: #333; }
-            .detalhe-card { border: 1px solid #ddd; padding: 20px; border-radius: 8px; }
-            .detalhe-field { display:flex; gap:10px; padding:8px 0; border-bottom:1px solid #eee; }
-            .detalhe-label { color:#666; min-width:140px; font-weight:bold; }
-            h4 { color: #333; }
-        </style></head><body>
-        <h2>Processo Bot CNJ - Relatório</h2>
-        <p>Impresso em: ${new Date().toLocaleString('pt-BR')}</p>
-        ${el.innerHTML}
-        </body></html>
-    `);
-    printWindow.document.close();
-    printWindow.print();
-}
-
-async function compartilharProcesso(id, numero) {
-    const texto = `Processo: ${numero}\nConsultado via Processo Bot CNJ`;
-    if (navigator.share) {
-        try {
-            await navigator.share({ title: 'Processo ' + numero, text: texto });
-        } catch (e) { /* usuário cancelou */ }
-    } else {
-        // Fallback: copiar para clipboard
-        try {
-            await navigator.clipboard.writeText(texto);
-            alert('📋 Informações copiadas para a área de transferência!');
-        } catch (e) {
-            prompt('Copie as informações:', texto);
-        }
-    }
-}
-
-async function exportarTodosPDF() {
-    try {
-        const res = await fetch('/processos/todos/pdf', {
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        if (!res.ok) throw new Error('Erro ao gerar PDF');
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'todos_processos.pdf';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-    } catch (err) {
-        alert('Erro ao exportar: ' + err.message);
-    }
-}
-
-// Inicializar
+// ── Inicializar ──
 let intervaloProcessos;
 configurarUI();
 carregarProcessos();
-intervaloProcessos = setInterval(carregarProcessos, 30000); // 30 seg em vez de 5
+intervaloProcessos = setInterval(carregarProcessos, 30000);

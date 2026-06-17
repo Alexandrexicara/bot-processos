@@ -5,7 +5,7 @@ const { parseMensagem } = require('./parser');
 const { gerarPDFProcesso } = require('./services/pdfService');
 
 const bots = {};
-const BASE_URL = process.env.BASE_URL || ''; // ex: https://meuapp.onrender.com
+const BASE_URL = process.env.BASE_URL || '';
 
 async function iniciarBot(token, userId) {
 
@@ -20,13 +20,11 @@ async function iniciarBot(token, userId) {
 
     // Valida o token antes de iniciar
     try {
-        const TelegramBot = require('node-telegram-bot-api');
         const testBot = new TelegramBot(token);
         const me = await testBot.getMe();
         console.log(`[BotManager] ✅ Token válido: @${me.username} (userId=${userId})`);
     } catch (err) {
         console.error(`[BotManager] ❌ Token inválido para userId=${userId}: ${err.message}`);
-        // Limpa o token inválido do banco
         try {
             await pool.query("UPDATE usuarios SET bot_token = NULL WHERE id = $1", [userId]);
         } catch (e) {}
@@ -35,13 +33,11 @@ async function iniciarBot(token, userId) {
 
     const options = {};
     if (!BASE_URL) {
-        // Apenas local: polling
         options.polling = true;
     }
 
     const bot = new TelegramBot(token, options);
 
-    // Trata erros de polling para não ficar em loop infinito
     bot.on('polling_error', (err) => {
         if (err.code === 'ETELEGRAM' && err.message?.includes('404')) {
             console.error(`[BotManager] ❌ Token inválido (404). Parando bot userId=${userId}`);
@@ -52,7 +48,6 @@ async function iniciarBot(token, userId) {
         }
     });
 
-    // Registra webhook se em produção (rota /webhook/:userId no server.js)
     if (BASE_URL) {
         try {
             const webhookUrl = `${BASE_URL}/webhook/${userId}`;
@@ -114,8 +109,7 @@ async function iniciarBot(token, userId) {
             return;
         }
 
-        bot.sendMessage(chatId, `🔍 Buscando processos para OAB ${parsed.uf} ${parsed.numero}...`);
-        await processarConsulta(bot, chatId, parsed, userId);
+        await processarConsultaArquivo(bot, chatId, parsed, userId, `OAB ${parsed.uf}${parsed.numero}`);
     });
 
     // Comando /detalhes - busca detalhes de um processo por número
@@ -125,12 +119,11 @@ async function iniciarBot(token, userId) {
         
         bot.sendMessage(chatId, `🔍 Buscando detalhes de ${numero}...`);
         const query = { tipo: 'processo', numero: numero, original: numero };
-        await processarConsulta(bot, chatId, query, userId);
+        await processarConsultaIndividual(bot, chatId, query, userId);
     });
 
     // Mensagens normais (processos, OAB sem comando, nomes)
     bot.on('message', async (msg) => {
-        // Ignora comandos já tratados
         if (msg.text?.startsWith('/')) return;
 
         const parsed = parseMensagem(msg.text);
@@ -144,14 +137,19 @@ async function iniciarBot(token, userId) {
         }
 
         let label = '';
-        if (parsed.tipo === 'oab') label = `OAB ${parsed.uf} ${parsed.numero}`;
+        if (parsed.tipo === 'oab') label = `OAB ${parsed.uf}${parsed.numero}`;
         else if (parsed.tipo === 'processo') label = `processo ${parsed.numero}`;
         else if (parsed.tipo === 'cpf') label = `CPF ${parsed.numero}`;
         else if (parsed.tipo === 'cnpj') label = `CNPJ ${parsed.numero}`;
         else label = `"${parsed.texto}"`;
 
-        bot.sendMessage(msg.chat.id, `🔍 Buscando ${label}...`);
-        await processarConsulta(bot, msg.chat.id, parsed, userId);
+        // Para OAB, CPF, CNPJ e nome → gera arquivo .txt com todos os resultados
+        // Para processo individual → mostra detalhes na mensagem
+        if (parsed.tipo === 'processo') {
+            await processarConsultaIndividual(bot, msg.chat.id, parsed, userId);
+        } else {
+            await processarConsultaArquivo(bot, msg.chat.id, parsed, userId, label);
+        }
     });
 
     // ── Callback queries dos botões inline ──────────────
@@ -206,65 +204,153 @@ async function iniciarBot(token, userId) {
     });
 
     bots[token] = bot;
-    bot.userId = userId; // guarda userId no bot para webhook
+    bot.userId = userId;
     console.log(`[BotManager] 🤖 Bot iniciado para userId=${userId}`);
 }
 
-async function processarConsulta(bot, chatId, query, userId) {
-    // ⏳ Indicador "a escrever..." no Telegram enquanto busca
+// ═══════════════════════════════════════════════════════════
+// MODO ARQUIVO: Busca múltiplos resultados e envia como .txt
+// (igual ao bot da referência: Buscando → Encontrados → Gerando → Enviar arquivo)
+// ═══════════════════════════════════════════════════════════
+async function processarConsultaArquivo(bot, chatId, query, userId, label) {
+    // 1. "Buscando processos..."
+    const msgBuscando = await bot.sendMessage(chatId, `🔍 Buscando processos...`);
+
+    // Keep-alive typing
     bot.sendChatAction(chatId, 'typing');
     const typingInterval = setInterval(() => {
         bot.sendChatAction(chatId, 'typing');
     }, 4000);
 
     try {
-        const userRes = await pool.query(
-            "SELECT * FROM usuarios WHERE id=$1",
-            [userId]
-        );
+        const userRes = await pool.query("SELECT * FROM usuarios WHERE id=$1", [userId]);
         const user = userRes.rows[0];
 
         const resultados = await consultarProcesso(query, user);
 
-        // ⏳ Para o indicador de typing
         clearInterval(typingInterval);
 
         if (!resultados || resultados.length === 0) {
-            if (query.tipo === 'oab') {
-                bot.sendMessage(chatId,
-                    '⚠️ *OAB não encontrada.*\n\n' +
-                    'A busca por OAB funciona através da API Escavador.\n' +
-                    'Se a chave ESCAVADOR_API_KEY não estiver configurada no servidor, a busca OAB fica limitada.\n\n' +
-                    '🔹 *Alternativa gratuita:* pesquise pelo *número do processo*\n' +
-                    '    Ex: `0001234-56.2025.8.19.0001`',
-                    { parse_mode: 'Markdown' }
-                );
-            } else {
-                bot.sendMessage(chatId,
-                    '❌ *Nenhum resultado encontrado.*\n\n' +
-                    'Verifique se o número do processo está correto.\n' +
-                    'Formato: `NNNNNNN-DD.AAAA.J.TR.OOOO` (20 dígitos)',
-                    { parse_mode: 'Markdown' }
-                );
-            }
+            await bot.editMessageText('❌ Nenhum processo encontrado.', {
+                chat_id: chatId, message_id: msgBuscando.message_id
+            });
             return;
         }
 
-        // Se for um único resultado (formato antigo, compatível)
         const lista = Array.isArray(resultados) ? resultados : [resultados];
 
-        // Limita a 15 resultados para não sobrecarregar o Telegram
-        const exibir = lista.slice(0, 15);
+        // 2. "✅ Encontrados X processos"
+        await bot.editMessageText(
+            `✅ Encontrados ${lista.length} processos\n\n⏳ Gerando arquivo detalhes.txt...`,
+            { chat_id: chatId, message_id: msgBuscando.message_id }
+        );
 
-        for (const dados of exibir) {
+        // Salvar processos no banco
+        for (const dados of lista) {
             try {
                 await pool.query(
-                    `INSERT INTO processos (numero, usuario_id, ultimo_status) 
-                     VALUES ($1,$2,$3)`,
+                    `INSERT INTO processos (numero, usuario_id, ultimo_status) VALUES ($1,$2,$3)`,
                     [dados.numero, userId, dados.data]
                 );
             } catch (dbErr) {
-                // Ignora erro de duplicata, apenas loga
+                if (dbErr.code !== '23505') {
+                    console.error('[BotManager] Erro ao salvar processo:', dbErr.message);
+                }
+            }
+        }
+
+        // 3. Gerar arquivo .txt completo
+        const txtContent = gerarArquivoDetalhes(lista, query, label);
+        const txtBuffer = Buffer.from(txtContent, 'utf-8');
+
+        // Nome do arquivo
+        let fileName = '';
+        if (query.tipo === 'oab') {
+            fileName = `temp_${query.uf}${query.numero}_detalhes.txt`;
+        } else if (query.tipo === 'cpf' || query.tipo === 'cnpj') {
+            fileName = `temp_${query.numero}_detalhes.txt`;
+        } else {
+            fileName = `temp_${label.replace(/\s+/g, '_')}_detalhes.txt`;
+        }
+
+        // Coletar telefones encontrados
+        const telefones = coletarTelefones(lista);
+        const temTelefones = telefones.length > 0;
+
+        // 4. Enviar arquivo como documento
+        const caption = 
+            `📄 Arquivo detalhes.txt gerado\n\n` +
+            `${query.tipo === 'oab' ? `OAB: ${query.uf}${query.numero}` : `Busca: ${label}`}\n` +
+            `Processos: ${lista.length}\n` +
+            `${temTelefones ? '📞 Telefones incluídos nos detalhes' : ''}`;
+
+        await bot.sendDocument(chatId, txtBuffer, {
+            caption: caption,
+            parse_mode: 'HTML'
+        }, {
+            filename: fileName,
+            contentType: 'text/plain'
+        });
+
+        // 5. Botões de ação: PDF completo
+        const botoes = {
+            inline_keyboard: [
+                [
+                    { text: '📥 PDF Completo', callback_data: 'pdf_todos:' + label }
+                ]
+            ]
+        };
+        bot.sendMessage(chatId, '📊 Deseja gerar o PDF completo com todos os processos?', { reply_markup: botoes });
+
+    } catch (err) {
+        clearInterval(typingInterval);
+        console.error('[BotManager] Erro na consulta arquivo:', err);
+        try {
+            await bot.editMessageText('⚠️ Erro ao consultar. Tente novamente mais tarde.', {
+                chat_id: chatId, message_id: msgBuscando.message_id
+            });
+        } catch (e) {
+            bot.sendMessage(chatId, '⚠️ Erro ao consultar. Tente novamente mais tarde.');
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// MODO INDIVIDUAL: Busca um processo e mostra detalhes + botões
+// ═══════════════════════════════════════════════════════════
+async function processarConsultaIndividual(bot, chatId, query, userId) {
+    bot.sendChatAction(chatId, 'typing');
+    const typingInterval = setInterval(() => {
+        bot.sendChatAction(chatId, 'typing');
+    }, 4000);
+
+    try {
+        const userRes = await pool.query("SELECT * FROM usuarios WHERE id=$1", [userId]);
+        const user = userRes.rows[0];
+
+        const resultados = await consultarProcesso(query, user);
+
+        clearInterval(typingInterval);
+
+        if (!resultados || resultados.length === 0) {
+            bot.sendMessage(chatId,
+                '❌ *Nenhum resultado encontrado.*\n\n' +
+                'Verifique se o número do processo está correto.\n' +
+                'Formato: `NNNNNNN-DD.AAAA.J.TR.OOOO` (20 dígitos)',
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+
+        const lista = Array.isArray(resultados) ? resultados : [resultados];
+
+        for (const dados of lista.slice(0, 5)) {
+            try {
+                await pool.query(
+                    `INSERT INTO processos (numero, usuario_id, ultimo_status) VALUES ($1,$2,$3)`,
+                    [dados.numero, userId, dados.data]
+                );
+            } catch (dbErr) {
                 if (dbErr.code !== '23505') {
                     console.error('[BotManager] Erro ao salvar processo:', dbErr.message);
                 }
@@ -272,7 +358,6 @@ async function processarConsulta(bot, chatId, query, userId) {
 
             const mensagem = formatarResultado(dados);
             
-            // Botões inline: PDF e Compartilhar
             const botoes = {
                 inline_keyboard: [
                     [
@@ -284,18 +369,9 @@ async function processarConsulta(bot, chatId, query, userId) {
             
             bot.sendMessage(chatId, mensagem, { parse_mode: 'Markdown', reply_markup: botoes });
 
-            // Pequena pausa para não floodar
-            if (exibir.length > 3) {
+            if (lista.length > 3) {
                 await new Promise(r => setTimeout(r, 300));
             }
-        }
-
-        if (lista.length > 15) {
-            bot.sendMessage(chatId,
-                `📊 *Mostrando 15 de ${lista.length} resultados.*\n` +
-                `Para ver todos, refine a busca com /oab UF NUMERO`,
-                { parse_mode: 'Markdown' }
-            );
         }
 
     } catch (err) {
@@ -305,6 +381,143 @@ async function processarConsulta(bot, chatId, query, userId) {
     }
 }
 
+// ═══════════════════════════════════════════════════════════
+// Gerar conteúdo do arquivo .txt com todos os detalhes
+// ═══════════════════════════════════════════════════════════
+function gerarArquivoDetalhes(lista, query, label) {
+    const linhas = [];
+    const separador = '═'.repeat(60);
+    const separadorFino = '─'.repeat(60);
+
+    // Cabeçalho
+    linhas.push(separador);
+    linhas.push(`  RELATÓRIO DE PROCESSOS - ${label}`);
+    linhas.push(`  Gerado em: ${new Date().toLocaleString('pt-BR')}`);
+    linhas.push(`  Total de processos: ${lista.length}`);
+    linhas.push(separador);
+    linhas.push('');
+
+    // Resumo de telefones encontrados
+    const todosTelefones = coletarTelefones(lista);
+    if (todosTelefones.length > 0) {
+        linhas.push('📞 TELEFONES ENCONTRADOS:');
+        for (const tel of todosTelefones) {
+            linhas.push(`  ${tel.nome}: ${tel.numero}`);
+        }
+        linhas.push('');
+        linhas.push(separadorFino);
+        linhas.push('');
+    }
+
+    // Detalhes de cada processo
+    for (let i = 0; i < lista.length; i++) {
+        const p = lista[i];
+        
+        linhas.push(`PROCESSO ${i + 1} de ${lista.length}`);
+        linhas.push(separadorFino);
+        linhas.push(`Número: ${p.numero || 'N/A'}`);
+        linhas.push(`Tribunal: ${p.tribunal || p.tribunal_descricao || 'N/A'}`);
+        if (p.classe) linhas.push(`Classe: ${p.classe}`);
+        if (p.assunto) linhas.push(`Assunto: ${p.assunto}`);
+        if (p.area) linhas.push(`Área: ${p.area}`);
+        if (p.grau) linhas.push(`Grau: ${p.grau}`);
+        if (p.situacao) linhas.push(`Situação: ${p.situacao}`);
+        if (p.orgaoJulgador) linhas.push(`Órgão Julgador: ${p.orgaoJulgador}`);
+        if (p.relator) linhas.push(`Relator: ${p.relator}`);
+        if (p.valor_causa) linhas.push(`Valor da Causa: ${p.valor_causa}`);
+        if (p.polo_ativo) linhas.push(`Polo Ativo (Autor): ${p.polo_ativo}`);
+        if (p.polo_passivo) linhas.push(`Polo Passivo (Réu): ${p.polo_passivo}`);
+        if (p.fase) linhas.push(`Fase: ${p.fase}`);
+        if (p.origem) linhas.push(`Origem: ${p.origem}`);
+        if (p.sistema) linhas.push(`Sistema: ${p.sistema}`);
+        if (p.estado) linhas.push(`Estado: ${p.estado}`);
+        if (p.unidade) linhas.push(`Unidade: ${p.unidade}`);
+        if (p.segredo_justica) linhas.push(`Segredo de Justiça: Sim`);
+        if (p.data) linhas.push(`Data de Início: ${p.data}`);
+        if (p.data_ultima_movimentacao) linhas.push(`Última Movimentação: ${p.data_ultima_movimentacao}`);
+        if (p.quantidade_movimentacoes) linhas.push(`Total de Movimentações: ${p.quantidade_movimentacoes}`);
+        if (p.fonte) linhas.push(`Fonte: ${p.fonte}`);
+
+        // Partes detalhadas com telefones
+        if (p.partes && p.partes.length > 0) {
+            linhas.push('');
+            linhas.push('  PARTES E ADVOGADOS:');
+            for (const parte of p.partes) {
+                const tipo = parte.tipo || parte.polo || 'Parte';
+                linhas.push(`  [${tipo}] ${parte.nome || 'N/A'}`);
+                if (parte.cpf) linhas.push(`    CPF: ${parte.cpf}`);
+                if (parte.cnpj) linhas.push(`    CNPJ: ${parte.cnpj}`);
+                if (parte.telefone) linhas.push(`    📞 Tel: ${parte.telefone}`);
+                if (parte.email) linhas.push(`    📧 Email: ${parte.email}`);
+                if (parte.endereco) linhas.push(`    📍 Endereço: ${parte.endereco}`);
+                if (parte.advogados && parte.advogados.length > 0) {
+                    for (const adv of parte.advogados) {
+                        linhas.push(`    👨‍⚖️ Advogado: ${typeof adv === 'string' ? adv : adv.nome || adv}`);
+                        if (typeof adv === 'object' && adv.oab) linhas.push(`      OAB: ${adv.oab}`);
+                        if (typeof adv === 'object' && adv.telefone) linhas.push(`      📞 Tel: ${adv.telefone}`);
+                    }
+                }
+            }
+        }
+
+        // Informações complementares
+        if (p.info_complementares && Object.keys(p.info_complementares).length > 0) {
+            linhas.push('');
+            linhas.push('  INFORMAÇÕES COMPLEMENTARES:');
+            for (const [chave, valor] of Object.entries(p.info_complementares)) {
+                const label2 = chave.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                linhas.push(`  ${label2}: ${valor}`);
+            }
+        }
+
+        // Movimentações
+        if (p.movimentacoes && p.movimentacoes.length > 0) {
+            linhas.push('');
+            linhas.push(`  MOVIMENTAÇÕES (${p.movimentacoes.length}):`);
+            for (const mov of p.movimentacoes.slice(0, 30)) {
+                linhas.push(`  ${mov.data || ''} — ${mov.descricao || mov.texto || ''}`);
+            }
+        }
+
+        linhas.push('');
+        linhas.push(separador);
+        linhas.push('');
+    }
+
+    // Rodapé
+    linhas.push('Relatório gerado pelo Processo Bot CNJ');
+    linhas.push(`Data: ${new Date().toLocaleString('pt-BR')}`);
+
+    return linhas.join('\n');
+}
+
+// ═══════════════════════════════════════════════════════════
+// Coletar telefones de todos os processos
+// ═══════════════════════════════════════════════════════════
+function coletarTelefones(lista) {
+    const telefones = [];
+    for (const p of lista) {
+        if (p.partes) {
+            for (const parte of p.partes) {
+                if (parte.telefone) {
+                    telefones.push({ nome: parte.nome, numero: parte.telefone });
+                }
+                if (parte.advogados) {
+                    for (const adv of parte.advogados) {
+                        if (typeof adv === 'object' && adv.telefone) {
+                            telefones.push({ nome: adv.nome || parte.nome, numero: adv.telefone });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return telefones;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Formatar resultado individual para mensagem do Telegram
+// ═══════════════════════════════════════════════════════════
 function formatarResultado(dados) {
     let msg = '';
     msg += `📄 *${dados.numero || 'N/A'}*\n`;
@@ -320,14 +533,13 @@ function formatarResultado(dados) {
     if (dados.polo_ativo) msg += `➡️ Autor: ${dados.polo_ativo}\n`;
     if (dados.polo_passivo) msg += `⬅️ Réu: ${dados.polo_passivo}\n`;
     
-    // Partes detalhadas
     if (dados.partes && dados.partes.length > 0) {
         msg += `\n👥 *Partes:*\n`;
         for (const parte of dados.partes.slice(0, 6)) {
             const tipo = parte.tipo || parte.polo || '';
             msg += `  • _${tipo}_: ${parte.nome}`;
             if (parte.advogados && parte.advogados.length > 0) {
-                msg += ` (Adv: ${parte.advogados.slice(0, 2).join(', ')})`;
+                msg += ` (Adv: ${parte.advogados.slice(0, 2).map(a => typeof a === 'string' ? a : a.nome || a).join(', ')})`;
             }
             msg += `\n`;
         }

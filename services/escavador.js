@@ -15,9 +15,8 @@ console.log(`[Escavador] 🔑 API Key: ${API_KEY ? 'SIM ✅' : 'NÃO ❌'}`);
 
 function extrairProcessos(data) {
     if (!data) return [];
-    console.log(`[Escavador] 📦 RESPOSTA:`, JSON.stringify(data).substring(0, 600));
     const arr = data?.items || data?.data || data?.resultados || (Array.isArray(data) ? data : []);
-    return arr.slice(0, 15);
+    return arr; // retorna todos sem limite
 }
 
 function formatar(p) {
@@ -34,7 +33,14 @@ function formatar(p) {
         tipo_pessoa: e.tipo_pessoa || '',
         cpf: e.cpf || '',
         cnpj: e.cnpj || '',
-        advogados: (e.advogados || []).map(a => a.nome || a)
+        telefone: e.telefone || e.telefones?.[0] || '',
+        email: e.email || e.emails?.[0] || '',
+        endereco: e.endereco || '',
+        advogados: (e.advogados || []).map(a => ({
+            nome: a.nome || (typeof a === 'string' ? a : ''),
+            oab: a.oab || a.oab_numero || '',
+            telefone: a.telefone || a.telefones?.[0] || ''
+        }))
     }));
     
     // Extrai informacoes complementares (relator, fase, origem, etc)
@@ -100,21 +106,41 @@ async function consultar(query) {
     return consultarPorProcesso(numero);
 }
 
-// ─── Advogado (OAB) → /advogado/processos ───────────
+// ─── Advogado (OAB) → /advogado/processos (com paginação) ───────────
 async function consultarAdvogado(uf, numero) {
     console.log(`[Escavador] 🔍 Advogado OAB: ${uf}/${numero}`);
     try {
-        const res = await axios.get(`${BASE}/advogado/processos`, {
-            params: { oab_estado: uf, oab_numero: numero, limit: 50 },
-            headers,
-            timeout: 30000
-        });
-        console.log(`[Escavador] STATUS: ${res.status}`);
-        const info = res.data?.advogado_encontrado;
-        if (info) console.log(`[Escavador] 👤 ${info.nome} | ${info.quantidade_processos} processos`);
-        const p = extrairProcessos(res.data);
-        console.log(`[Escavador] ✅ ${p.length} resultados`);
-        return p.map(formatar);
+        const todosResultados = [];
+        let offset = 0;
+        const limit = 100;
+        let totalDisponivel = 0;
+        
+        do {
+            const res = await axios.get(`${BASE}/advogado/processos`, {
+                params: { oab_estado: uf, oab_numero: numero, limit, offset },
+                headers,
+                timeout: 30000
+            });
+            console.log(`[Escavador] STATUS: ${res.status} (offset=${offset})`);
+            const info = res.data?.advogado_encontrado;
+            if (info && offset === 0) {
+                console.log(`[Escavador] 👤 ${info.nome} | ${info.quantidade_processos} processos`);
+                totalDisponivel = info.quantidade_processos || 0;
+            }
+            const p = extrairProcessos(res.data);
+            todosResultados.push(...p);
+            
+            console.log(`[Escavador] 📦 Página: ${p.length} processos (total coletado: ${todosResultados.length})`);
+            
+            if (p.length < limit) break; // Última página
+            offset += limit;
+            
+            // Segurança: máximo 500 processos
+            if (todosResultados.length >= 500) break;
+        } while (true);
+        
+        console.log(`[Escavador] ✅ ${todosResultados.length} resultados (de ${totalDisponivel} disponíveis)`);
+        return todosResultados.map(formatar);
     } catch (err) {
         console.error('[Escavador] ❌❌❌ ERRO ADVOGADO/OAB:');
         console.error('   STATUS:', err.response?.status);
@@ -124,21 +150,37 @@ async function consultarAdvogado(uf, numero) {
     }
 }
 
-// ─── Envolvido (CPF/CNPJ/Nome) → /envolvido/processos ───
+// ─── Envolvido (CPF/CNPJ/Nome) → /envolvido/processos (com paginação) ───
 async function consultarEnvolvido(params) {
     console.log(`[Escavador] 🔍 Envolvido:`, params);
     try {
-        const res = await axios.get(`${BASE}/envolvido/processos`, {
-            params: { ...params, limit: 50 },
-            headers,
-            timeout: 30000
-        });
-        console.log(`[Escavador] STATUS: ${res.status}`);
-        const info = res.data?.envolvido_encontrado;
-        if (info) console.log(`[Escavador] 👤 ${info.nome} | ${info.quantidade_processos} processos`);
-        const p = extrairProcessos(res.data);
-        console.log(`[Escavador] ✅ ${p.length} resultados`);
-        return p.map(formatar);
+        const todosResultados = [];
+        let offset = 0;
+        const limit = 100;
+        
+        do {
+            const res = await axios.get(`${BASE}/envolvido/processos`, {
+                params: { ...params, limit, offset },
+                headers,
+                timeout: 30000
+            });
+            console.log(`[Escavador] STATUS: ${res.status} (offset=${offset})`);
+            const info = res.data?.envolvido_encontrado;
+            if (info && offset === 0) {
+                console.log(`[Escavador] 👤 ${info.nome} | ${info.quantidade_processos} processos`);
+            }
+            const p = extrairProcessos(res.data);
+            todosResultados.push(...p);
+            
+            console.log(`[Escavador] 📦 Página: ${p.length} processos (total coletado: ${todosResultados.length})`);
+            
+            if (p.length < limit) break;
+            offset += limit;
+            if (todosResultados.length >= 500) break;
+        } while (true);
+        
+        console.log(`[Escavador] ✅ ${todosResultados.length} resultados`);
+        return todosResultados.map(formatar);
     } catch (err) {
         console.error('[Escavador] ❌❌❌ ERRO ENVOLVIDO:');
         console.error('   STATUS:', err.response?.status);
