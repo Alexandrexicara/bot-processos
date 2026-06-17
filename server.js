@@ -542,6 +542,152 @@ app.get('/api/processo/:numero/pdf', async (req, res) => {
     }
 });
 
+// API pública: Alvará do processo (PDF com dados completos)
+app.get('/api/alvara/:numero', async (req, res) => {
+    try {
+        const numero = decodeURIComponent(req.params.numero);
+        
+        // Busca dados do processo
+        let detalhe = { numero };
+        const proc = await pool.query(
+            'SELECT p.*, u.id as uid FROM processos p JOIN usuarios u ON p.usuario_id = u.id WHERE p.numero = $1 LIMIT 1',
+            [numero]
+        );
+        if (proc.rows.length > 0) {
+            const p = proc.rows[0];
+            const userRes = await pool.query('SELECT * FROM usuarios WHERE id=$1', [p.uid]);
+            const user = userRes.rows[0];
+            const resultados = await consultarProcesso(numero, user);
+            const lista = Array.isArray(resultados) ? resultados : [resultados];
+            detalhe = lista.find(r => r.numero === numero) || lista[0] || { numero };
+        }
+
+        // Gerar PDF do Alvará
+        const PDFDocument = require('pdfkit');
+        const doc = new PDFDocument({ margin: 50, size: 'A4' });
+        const buffers = [];
+        doc.on('data', b => buffers.push(b));
+        doc.on('end', () => {
+            const pdfBuffer = Buffer.concat(buffers);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="alvara_${numero.replace(/[^0-9]/g, '')}.pdf"`);
+            res.send(pdfBuffer);
+        });
+
+        const d = detalhe;
+        const dataAtual = new Date().toLocaleDateString('pt-BR');
+
+        // Cabeçalho
+        doc.fontSize(10).text(`Processo Bot CNJ — Gerado em ${dataAtual}`, 50, 30);
+        doc.fontSize(20).font('Helvetica-Bold').text('ALVARÁ / EXTRATO DE PROCESSO', 50, 50, { align: 'center' });
+        doc.moveTo(50, 85).lineTo(545, 85).stroke('#FF5E00');
+
+        // Dados do Processo
+        let y = 100;
+        doc.fontSize(14).font('Helvetica-Bold').fillColor('#FF5E00').text('DADOS DO PROCESSO', 50, y);
+        y += 25;
+        doc.fontSize(11).font('Helvetica').fillColor('#333');
+        
+        const campos = [
+            ['Processo', d.numero || numero],
+            ['Tribunal', d.tribunal || d.tribunal_descricao || ''],
+            ['Classe', d.classe || ''],
+            ['Assunto', d.assunto || ''],
+            ['Área', d.area || ''],
+            ['Situação', d.situacao || ''],
+            ['Órgão Julgador', d.orgaoJulgador || ''],
+            ['Relator', d.relator || ''],
+            ['Valor da Causa', d.valor_causa || ''],
+            ['Data de Início', d.data || ''],
+            ['Última Movimentação', d.data_ultima_movimentacao || d.ultimo_status || '']
+        ];
+        for (const [label, valor] of campos) {
+            if (valor && valor.toString().trim()) {
+                doc.font('Helvetica-Bold').text(`${label}: `, 50, y, { continued: true });
+                doc.font('Helvetica').text(valor);
+                y += 18;
+            }
+        }
+
+        // Polos
+        if (d.polo_ativo || d.polo_passivo) {
+            y += 10;
+            doc.fontSize(14).font('Helvetica-Bold').fillColor('#FF5E00').text('POLOS', 50, y);
+            y += 25;
+            doc.fontSize(11).fillColor('#333');
+            if (d.polo_ativo) {
+                doc.font('Helvetica-Bold').text('Polo Ativo (Autor): ', 50, y, { continued: true });
+                doc.font('Helvetica').text(d.polo_ativo);
+                y += 20;
+            }
+            if (d.polo_passivo) {
+                doc.font('Helvetica-Bold').text('Polo Passivo (Réu): ', 50, y, { continued: true });
+                doc.font('Helvetica').text(d.polo_passivo);
+                y += 20;
+            }
+        }
+
+        // Partes
+        if (d.partes && d.partes.length > 0) {
+            y += 10;
+            if (y > 650) { doc.addPage(); y = 50; }
+            doc.fontSize(14).font('Helvetica-Bold').fillColor('#FF5E00').text('PARTES E ADVOGADOS', 50, y);
+            y += 25;
+            doc.fontSize(11).fillColor('#333');
+            for (const parte of d.partes) {
+                if (y > 700) { doc.addPage(); y = 50; }
+                const tipo = parte.tipo || parte.polo || 'Parte';
+                doc.font('Helvetica-Bold').fillColor('#FF5E00').text(tipo.toUpperCase(), 50, y);
+                y += 18;
+                doc.fillColor('#333');
+                doc.font('Helvetica-Bold').text('Nome: ', 60, y, { continued: true });
+                doc.font('Helvetica').text(parte.nome || 'N/A');
+                y += 18;
+                if (parte.cpf) { doc.font('Helvetica-Bold').text('CPF: ', 60, y, { continued: true }); doc.font('Helvetica').text(parte.cpf); y += 18; }
+                if (parte.cnpj) { doc.font('Helvetica-Bold').text('CNPJ: ', 60, y, { continued: true }); doc.font('Helvetica').text(parte.cnpj); y += 18; }
+                if (parte.telefone) { doc.text(`Telefone: ${parte.telefone}`, 60, y); y += 18; }
+                if (parte.email) { doc.text(`Email: ${parte.email}`, 60, y); y += 18; }
+                if (parte.advogados) {
+                    for (const adv of parte.advogados) {
+                        const nm = typeof adv === 'string' ? adv : (adv.nome || '');
+                        const oab = typeof adv === 'object' ? (adv.oab || '') : '';
+                        doc.text(`Advogado: ${nm}${oab ? ' — OAB: ' + oab : ''}`, 60, y);
+                        y += 18;
+                    }
+                }
+                y += 5;
+            }
+        }
+
+        // Movimentações
+        if (d.movimentacoes && d.movimentacoes.length > 0) {
+            y += 10;
+            if (y > 650) { doc.addPage(); y = 50; }
+            doc.fontSize(14).font('Helvetica-Bold').fillColor('#FF5E00').text('MOVIMENTAÇÕES', 50, y);
+            y += 25;
+            doc.fontSize(10).fillColor('#333');
+            for (const mov of d.movimentacoes.slice(0, 20)) {
+                if (y > 720) { doc.addPage(); y = 50; }
+                doc.font('Helvetica-Bold').text(`${mov.data || ''}`, 50, y, { continued: true });
+                doc.font('Helvetica').text(` — ${mov.descricao || mov.texto || ''}`);
+                y += 16;
+            }
+        }
+
+        // Rodapé
+        y += 30;
+        if (y > 700) { doc.addPage(); y = 50; }
+        doc.moveTo(50, y).lineTo(545, y).stroke('#ccc');
+        y += 10;
+        doc.fontSize(9).fillColor('#888').text('Documento gerado automaticamente pelo Processo Bot CNJ', 50, y, { align: 'center' });
+
+        doc.end();
+    } catch (err) {
+        console.error('[API Alvará] Erro:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Webhook Telegram por usuário
 const botsMap = require('./botManager').bots;
 app.post('/webhook/:userId', async (req, res) => {

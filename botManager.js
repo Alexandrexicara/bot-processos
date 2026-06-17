@@ -278,18 +278,43 @@ async function processarConsultaArquivo(bot, chatId, query, userId, label) {
         // 5. Gerar o link público
         const linkPublico = BASE_URL ? `${BASE_URL}/resultados/${consultaId}` : `https://bot-processos.onrender.com/resultados/${consultaId}`;
 
-        // 6. Enviar mensagem com "detalhes.txt" como LINK AZUL clicável
-        const temTelefones = telefones.length > 0;
+        // 6. Enviar cada processo como mensagem individual (modelo SupremoDo7)
+        for (let i = 0; i < lista.length; i++) {
+            const p = lista[i];
+            const msgProc = formatarProcessoMsg(p, linkPublico);
+
+            // Botões: Detalhes + Alvará
+            const botoesProc = {
+                inline_keyboard: [
+                    [
+                        { text: '📥 Baixar Alvará', url: `${linkPublico}/processo/${encodeURIComponent(p.numero || '')}#alvara` }
+                    ],
+                    [
+                        { text: '📱 Enviar WhatsApp', url: `https://wa.me/?text=${encodeURIComponent('📄 *PROCESSO:*\n' + msgProc)}` },
+                        { text: '📄 PDF', callback_data: 'pdf:' + (p.numero || '') }
+                    ]
+                ]
+            };
+
+            await bot.sendMessage(chatId, msgProc, {
+                reply_markup: botoesProc,
+                disable_web_page_preview: true
+            });
+
+            // Pequeno delay entre mensagens para não travar
+            if (i < lista.length - 1) {
+                await new Promise(r => setTimeout(r, 300));
+            }
+        }
+
+        // 7. Mensagem final com link geral
         const msgFinal =
             `✅ <b>${lista.length} processo(s) encontrado(s)</b>\n\n` +
             `📄 <a href="${linkPublico}">detalhes.txt</a>\n\n` +
             `${query.tipo === 'oab' ? `OAB: ${query.uf}${query.numero}` : `Busca: ${label}`}\n` +
-            `${temTelefones ? '📞 Telefones encontrados — veja no arquivo' : ''}\n` +
-            `\n💡 Clique em <b>detalhes.txt</b> para ver todos os processos`;
+            `\n💡 Clique em <b>detalhes.txt</b> para ver todos os processos e baixar alvarás`;
 
-        await bot.editMessageText(msgFinal, {
-            chat_id: chatId,
-            message_id: msgBuscando.message_id,
+        await bot.sendMessage(chatId, msgFinal, {
             parse_mode: 'HTML',
             disable_web_page_preview: false
         });
@@ -381,6 +406,95 @@ async function processarConsultaIndividual(bot, chatId, query, userId) {
         console.error('[BotManager] Erro na consulta:', err);
         bot.sendMessage(chatId, '⚠️ Erro ao consultar. Tente novamente mais tarde.');
     }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Formatar um processo individual para mensagem no Telegram
+// Modelo idêntico ao SupremoDo7
+// ═══════════════════════════════════════════════════════════
+function formatarProcessoMsg(p, linkPublico) {
+    const linhas = [];
+    const num = p.numero || 'N/A';
+    const linkProc = `${linkPublico}/processo/${encodeURIComponent(num)}`;
+
+    linhas.push(`PROCESSO: ${num}`);
+    linhas.push(`LINK: ${linkProc}`);
+    linhas.push(`TRIBUNAL: ${p.tribunal || p.tribunal_descricao || 'N/A'}`);
+    if (p.classe) linhas.push(`CLASSE: ${p.classe}`);
+    if (p.assunto) linhas.push(`ASSUNTO: ${p.assunto}`);
+    if (p.valor_causa) linhas.push(`VALOR: ${p.valor_causa}`);
+    if (p.data) linhas.push(`DATA INICIO: ${p.data}`);
+    if (p.data_ultima_movimentacao) linhas.push(`DATA ULTIMO MOVIMENTO: ${p.data_ultima_movimentacao}`);
+    if (p.orgaoJulgador) linhas.push(`ORGAO JULGADOR: ${p.orgaoJulgador}`);
+
+    // Última movimentação
+    if (p.movimentacoes && p.movimentacoes.length > 0) {
+        const ultima = p.movimentacoes[0];
+        linhas.push(`ULTIMA MOVIMENTACAO:`);
+        linhas.push(`  DATA: ${ultima.data || ''}`);
+        linhas.push(`  DESCRICAO: ${ultima.descricao || ultima.texto || ''}`);
+    }
+
+    linhas.push('');
+
+    // Polo Ativo
+    const poloAtivo = (p.partes || []).filter(pt => {
+        const tipo = (pt.tipo || pt.polo || '').toLowerCase();
+        return tipo.includes('ativo') || tipo.includes('autor') || tipo.includes('requerente') || tipo.includes('impugnante');
+    });
+
+    if (poloAtivo.length > 0 || p.polo_ativo) {
+        linhas.push('POLO ATIVO:');
+        if (poloAtivo.length > 0) {
+            for (const parte of poloAtivo) {
+                linhas.push(`- NOME: ${parte.nome || 'N/A'}`);
+                if (parte.cpf) linhas.push(`- DOC: ${parte.cpf}`);
+                if (parte.cnpj) linhas.push(`- DOC: ${parte.cnpj}`);
+                // Telefones
+                const tels = [];
+                if (parte.telefone) tels.push(parte.telefone);
+                if (parte.telefones) tels.push(...parte.telefones);
+                if (tels.length > 0) {
+                    linhas.push('- TELEFONES:');
+                    tels.forEach((t, idx) => linhas.push(`  ${idx + 1}. 📞 ${t}`));
+                }
+                // Advogados
+                if (parte.advogados && parte.advogados.length > 0) {
+                    for (const adv of parte.advogados) {
+                        const nomeAdv = typeof adv === 'string' ? adv : (adv.nome || '');
+                        const cpfAdv = typeof adv === 'object' ? (adv.cpf || '') : '';
+                        linhas.push(`- ADVOGADO: ${nomeAdv}${cpfAdv ? ' (CPF: ' + cpfAdv + ')' : ''}`);
+                    }
+                }
+            }
+        } else if (p.polo_ativo) {
+            linhas.push(`- NOME: ${p.polo_ativo}`);
+        }
+    }
+
+    linhas.push('');
+
+    // Polo Passivo
+    const poloPassivo = (p.partes || []).filter(pt => {
+        const tipo = (pt.tipo || pt.polo || '').toLowerCase();
+        return tipo.includes('passivo') || tipo.includes('reu') || tipo.includes('r\u00e9u') || tipo.includes('requerido') || tipo.includes('impugnado');
+    });
+
+    if (poloPassivo.length > 0 || p.polo_passivo) {
+        linhas.push('POLO PASSIVO:');
+        if (poloPassivo.length > 0) {
+            for (const parte of poloPassivo) {
+                linhas.push(`- NOME: ${parte.nome || 'N/A'}`);
+                if (parte.cpf) linhas.push(`- DOC: ${parte.cpf}`);
+                if (parte.cnpj) linhas.push(`- DOC: ${parte.cnpj}`);
+                if (parte.telefone) linhas.push(`- TELEFONE: ${parte.telefone}`);
+            }
+        } else if (p.polo_passivo) {
+            linhas.push(`- NOME: ${p.polo_passivo}`);
+        }
+    }
+
+    return linhas.join('\n');
 }
 
 // ═══════════════════════════════════════════════════════════

@@ -82,6 +82,23 @@ function detectarTribunal(num){
 }
 function getUrlTribunal(num){const t=detectarTribunal(num);return t&&TRIBUNAIS_URL[t]?TRIBUNAIS_URL[t](num):null;}
 
+// Ir para o tribunal: copia número automaticamente + abre aba
+function irParaTribunal(numero, btnId){
+    navigator.clipboard.writeText(numero).then(()=>{
+        const btn=document.getElementById(btnId);
+        if(btn){btn.textContent='✅ Copiado! Abrindo tribunal...';btn.style.background='#3fb950';
+        setTimeout(()=>{btn.textContent='⚖️ Ir para o Tribunal';btn.style.background='#238636';},3000);}
+    }).catch(()=>{
+        const ta=document.createElement('textarea');ta.value=numero;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+    });
+    const url=getUrlTribunal(numero);
+    if(url)window.open(url,'_blank');
+}
+
+// Telefone como link clicável
+function telLink(tel){if(!tel)return'';return`<a href="tel:+55${tel.replace(/\D/g,'')}">📞 ${tel}</a>`;}
+function emailLink(email){if(!email)return'';return`<a href="mailto:${email}">📧 ${email}</a>`;}
+
 const numeroProcesso = window.location.pathname.split('/').filter(Boolean).pop() || new URLSearchParams(window.location.search).get('numero') || '';
 const container = document.getElementById('app');
 
@@ -103,8 +120,9 @@ function renderizar(p){
     let html='';
     // Botões
     html+='<div class="btn-group">';
-    if(urlTrib)html+=`<a href="${urlTrib}" target="_blank" class="btn btn-verde">⚖️ Ver Processo no Tribunal</a>`;
-    html+=`<a href="/api/processo/${encodeURIComponent(num)}/pdf" target="_blank" class="btn btn-pdf">📥 Baixar PDF</a>`;
+    html+=`<a href="/api/alvara/${encodeURIComponent(num)}" target="_blank" class="btn" style="background:#238636;color:#fff" id="btnAlvara">📥 Baixar Alvará</a>`;
+    if(urlTrib)html+=`<button id="btnTrib" onclick="irParaTribunal('${num}','btnTrib')" class="btn btn-verde">⚖️ Ir para o Tribunal</button>`;
+    html+=`<a href="/api/processo/${encodeURIComponent(num)}/pdf" target="_blank" class="btn btn-pdf">📄 PDF Completo</a>`;
     html+=`<button onclick="window.print()" class="btn btn-azul">🖨️ Imprimir</button>`;
     html+='</div>';
     // Dados
@@ -138,13 +156,13 @@ function renderizar(p){
             html+=`<div class="parte-nome">${parte.nome||'N/A'}</div>`;
             if(parte.cpf)html+=`<div class="parte-info">CPF: ${parte.cpf}</div>`;
             if(parte.cnpj)html+=`<div class="parte-info">CNPJ: ${parte.cnpj}</div>`;
-            if(parte.telefone)html+=`<div class="parte-info">📞 ${parte.telefone}</div>`;
-            if(parte.email)html+=`<div class="parte-info">📧 ${parte.email}</div>`;
+            if(parte.telefone)html+=`<div class="parte-info">${telLink(parte.telefone)}</div>`;
+            if(parte.email)html+=`<div class="parte-info">${emailLink(parte.email)}</div>`;
             if(parte.advogados)for(const adv of parte.advogados){
                 const nm=typeof adv==='string'?adv:adv.nome||adv;
                 const oab=typeof adv==='object'?adv.oab||'':'';
                 const tel=typeof adv==='object'?adv.telefone||'':'';
-                html+=`<div class="parte-adv">👨‍⚖️ ${nm}${oab?' — OAB: '+oab:''}${tel?' | 📞 '+tel:''}</div>`;
+                html+=`<div class="parte-adv">👨‍⚖️ ${nm}${oab?' — OAB: '+oab:''}${tel?' | '+telLink(tel):''}</div>`;
             }
             html+='</div>';
         }
@@ -170,8 +188,9 @@ function renderizar(p){
     if(urlTrib){
         html+='<div class="card" style="text-align:center">';
         html+='<h2>🔗 Acessar no Sistema Judicial</h2>';
-        html+='<p style="margin:10px 0;color:#8b949e">Clique abaixo para acessar o processo completo no sistema do tribunal e baixar documentos oficiais:</p>';
-        html+=`<a href="${urlTrib}" target="_blank" class="btn btn-verde" style="font-size:18px;padding:16px 40px">⚖️ Ver Processo Completo no Tribunal</a>`;
+        html+='<p style="margin:10px 0;color:#8b949e">O número do processo será copiado automaticamente. Cole no campo de busca do tribunal:</p>';
+        html+=`<div style="font-family:monospace;font-size:20px;color:#fff;background:#0d1117;padding:15px;border-radius:8px;margin:15px 0;border:2px solid #FF5E00;cursor:pointer" onclick="navigator.clipboard.writeText('${num}');this.textContent='✅ Copiado!'">${num}</div>`;
+        html+=`<button id="btnTribFinal" onclick="irParaTribunal('${num}','btnTribFinal')" class="btn btn-verde" style="font-size:18px;padding:16px 40px">⚖️ Ir para o Tribunal</button>`;
         html+='</div>';
     }
     container.innerHTML=html;

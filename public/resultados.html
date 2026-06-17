@@ -105,6 +105,36 @@ function getUrlTribunal(num) {
     return t && TRIBUNAIS_URL[t] ? TRIBUNAIS_URL[t](num) : null;
 }
 
+// ═══════════════════════════════════════════════════════════
+// Ir para o tribunal: copia número automaticamente + abre aba
+// ═══════════════════════════════════════════════════════════
+function irParaTribunal(numero, btnId) {
+    // Copia o número para a área de transferência automaticamente
+    navigator.clipboard.writeText(numero).then(() => {
+        // Mostra feedback visual
+        const btn = document.getElementById(btnId);
+        if (btn) {
+            btn.textContent = '✅ Copiado! Abrindo tribunal...';
+            btn.style.background = '#3fb950';
+            setTimeout(() => {
+                btn.textContent = '⚖️ Ir para o Tribunal';
+                btn.style.background = '#238636';
+            }, 3000);
+        }
+    }).catch(() => {
+        // Fallback para navegadores mais antigos
+        const ta = document.createElement('textarea');
+        ta.value = numero;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+    });
+    // Abre o tribunal em nova aba
+    const url = getUrlTribunal(numero);
+    if (url) window.open(url, '_blank');
+}
+
 function escHtml(s) {
     if (!s) return '';
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -231,9 +261,10 @@ function renderizar(data) {
         }
 
         // ── Botões de ação ──
+        const btnTribId = 'trib_' + i;
         html += '<div class="proc-actions">';
         html += `<a href="${linkDetalhe}" target="_blank" class="btn btn-laranja btn-sm">📋 Ver Detalhes Completos</a>`;
-        if (urlTrib) html += `<a href="${urlTrib}" target="_blank" class="btn btn-verde btn-sm">⚖️ Ver no Tribunal</a>`;
+        if (urlTrib) html += `<button id="${btnTribId}" onclick="irParaTribunal('${escHtml(num)}','${btnTribId}')" class="btn btn-verde btn-sm">⚖️ Ir para o Tribunal</button>`;
         html += `<a href="/api/processo/${encodeURIComponent(num)}/pdf" target="_blank" class="btn btn-pdf btn-sm">📥 Baixar PDF</a>`;
         html += '</div>';
 
