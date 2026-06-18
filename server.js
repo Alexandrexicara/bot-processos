@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const pool = require('./db');
-const { carregarBots, iniciarBot } = require('./botManager');
+const { carregarBots, iniciarBot, pararBot } = require('./botManager');
 const { gerarToken, authMiddleware, adminMiddleware, hashSenha, verificarSenha } = require('./auth');
 const { consultarProcesso } = require('./apiRouter');
 const { gerarPDFProcesso } = require('./services/pdfService');
@@ -370,6 +370,20 @@ app.put('/usuario/:id', authMiddleware, adminMiddleware, async (req, res) => {
             `UPDATE usuarios SET ${sets.join(', ')} WHERE id = $${idx}`,
             params
         );
+
+        // Se bloqueou o usuário (ativo = false), parar o bot dele imediatamente
+        if (ativo === false) {
+            pararBot(parseInt(userId));
+        }
+
+        // Se desbloqueou (ativo = true), reiniciar o bot
+        if (ativo === true) {
+            const userRes = await pool.query('SELECT bot_token FROM usuarios WHERE id=$1', [userId]);
+            const botToken = userRes.rows[0]?.bot_token;
+            if (botToken) {
+                await iniciarBot(botToken, parseInt(userId));
+            }
+        }
 
         res.json({ success: true, message: "Usuário atualizado" });
     } catch (err) {

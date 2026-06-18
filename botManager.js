@@ -838,4 +838,22 @@ async function carregarBots() {
     }
 }
 
-module.exports = { carregarBots, iniciarBot, bots };
+// ── Parar bot de um usuário bloqueado ──
+function pararBot(userId) {
+    for (const [token, bot] of Object.entries(bots)) {
+        if (bot.userId === userId) {
+            try {
+                bot.stopPolling();
+            } catch (e) { /* polling pode já estar parado */ }
+            try {
+                bot.deleteWebHook();
+            } catch (e) { /* webhook pode não existir */ }
+            delete bots[token];
+            console.log(`[BotManager] 🛑 Bot parado para userId=${userId} (bloqueado)`);
+            return true;
+        }
+    }
+    return false;
+}
+
+module.exports = { carregarBots, iniciarBot, pararBot, bots };

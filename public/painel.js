@@ -74,6 +74,9 @@ async function carregarProcessos() {
         });
 
         if (res.status === 401 || res.status === 403) {
+            if (res.status === 403) {
+                alert('🔒 Sua conta foi bloqueada pelo administrador.\nContacte o suporte para mais informações.');
+            }
             logout();
             return;
         }
