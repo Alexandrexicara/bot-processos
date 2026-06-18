@@ -4,6 +4,23 @@ if (token) {
     window.location.href = '/painel.html';
 }
 
+// ── Fetch com timeout (evita travar quando servidor demora) ──
+async function fetchComTimeout(url, options = {}, timeoutMs = 30000) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(timeout);
+        return res;
+    } catch (err) {
+        clearTimeout(timeout);
+        if (err.name === 'AbortError') {
+            throw new Error('Servidor demorou demais. Tente novamente em alguns segundos.');
+        }
+        throw err;
+    }
+}
+
 // Alternar tabs
 function mostrarTab(tab, event) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -22,7 +39,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     erroEl.textContent = '';
 
     try {
-        const res = await fetch('/auth/login', {
+        const res = await fetchComTimeout('/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -66,7 +83,7 @@ document.getElementById('registro-form').addEventListener('submit', async (e) =>
     }
 
     try {
-        const res = await fetch('/auth/registro', {
+        const res = await fetchComTimeout('/auth/registro', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

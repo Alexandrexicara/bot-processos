@@ -9,6 +9,24 @@ if (!token) {
 let processosSelecionados = new Set();
 let processosData = []; // cache dos dados da tabela
 let previewBlobUrl = null; // URL do preview atual
+let carregandoProcessos = false; // flag para evitar requisições duplicadas
+
+// ── Fetch com timeout (evita travar a página quando servidor demora) ──
+async function fetchComTimeout(url, options = {}, timeoutMs = 30000) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(timeout);
+        return res;
+    } catch (err) {
+        clearTimeout(timeout);
+        if (err.name === 'AbortError') {
+            throw new Error('Tempo esgotado — o servidor demorou demais para responder.');
+        }
+        throw err;
+    }
+}
 
 // Configurar UI baseado no tipo de usuário
 function configurarUI() {
@@ -40,8 +58,18 @@ function mostrarSecao(secao, event) {
 }
 
 async function carregarProcessos() {
+    // Evita requisições duplicadas se a anterior ainda estiver rodando
+    if (carregandoProcessos) return;
+    carregandoProcessos = true;
+
+    const tbody = document.querySelector("#sec-processos tbody");
+    // Mostra indicador de carregamento apenas na primeira vez
+    if (tbody.children.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:30px; color:#888;">⏳ Carregando processos...</td></tr>';
+    }
+
     try {
-        const res = await fetch('/processos', {
+        const res = await fetchComTimeout('/processos', {
             headers: { 'Authorization': 'Bearer ' + token }
         });
 
@@ -58,16 +86,17 @@ async function carregarProcessos() {
         }
 
         processosData = dados;
-        const tbody = document.querySelector("#sec-processos tbody");
-        tbody.innerHTML = "";
+
+        // ── Construir HTML em memória e inserir de uma vez (evita travamento) ──
+        const fragment = document.createDocumentFragment();
 
         dados.forEach(p => {
             const atualizado = p.atualizado_em ? new Date(p.atualizado_em).toLocaleString() : '-';
             const usuarioCol = user.tipo === 'admin' ? `<td>${p.usuario_email || '-'}</td>` : '';
             const checked = processosSelecionados.has(p.id) ? 'checked' : '';
             
-            tbody.innerHTML += `
-            <tr>
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
                 <td class="checkbox-col">
                     <input type="checkbox" data-id="${p.id}" ${checked} onchange="atualizarSelecao()">
                 </td>
@@ -97,12 +126,22 @@ async function carregarProcessos() {
                         📤
                     </button>
                 </td>
-            </tr>`;
+            `;
+            fragment.appendChild(tr);
         });
+
+        // Inserir tudo de uma vez (não trava o navegador)
+        tbody.innerHTML = '';
+        tbody.appendChild(fragment);
         
         atualizarSelecao();
     } catch (err) {
-        console.error("Erro ao carregar processos:", err);
+        console.error('Erro ao carregar processos:', err.message);
+        if (tbody.children.length === 0 || tbody.querySelector('td[colspan]')) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:#ff4444;">❌ ${err.message}</td></tr>`;
+        }
+    } finally {
+        carregandoProcessos = false;
     }
 }
 
@@ -144,14 +183,14 @@ async function previewSelecionados() {
         document.getElementById('preview-title').textContent = `📄 Visualizando ${processosSelecionados.size} processo(s)...`;
         mostrarPreviewLoading();
         
-        const res = await fetch('/processos/selecionados/pdf', {
+        const res = await fetchComTimeout('/processos/selecionados/pdf', {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
                 'Authorization': 'Bearer ' + token 
             },
             body: JSON.stringify({ ids: Array.from(processosSelecionados) })
-        });
+        }, 120000);
         if (!res.ok) throw new Error('Erro ao gerar PDF');
         await abrirPreview(res, `${processosSelecionados.size} processos selecionados`);
     } catch (err) {
@@ -164,14 +203,14 @@ async function baixarSelecionados() {
     if (processosSelecionados.size === 0) return alert('Selecione pelo menos um processo');
     
     try {
-        const res = await fetch('/processos/selecionados/pdf', {
+        const res = await fetchComTimeout('/processos/selecionados/pdf', {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
                 'Authorization': 'Bearer ' + token 
             },
             body: JSON.stringify({ ids: Array.from(processosSelecionados) })
-        });
+        }, 120000);
         if (!res.ok) throw new Error('Erro ao gerar PDF');
         downloadFromResponse(res, 'processos_selecionados.pdf');
     } catch (err) {
@@ -228,9 +267,9 @@ async function previewPDF(id, numero) {
         document.getElementById('preview-title').textContent = `📄 Processo ${numero} — Gerando...`;
         mostrarPreviewLoading();
         
-        const res = await fetch('/processos/' + id + '/pdf', {
+        const res = await fetchComTimeout('/processos/' + id + '/pdf', {
             headers: { 'Authorization': 'Bearer ' + token }
-        });
+        }, 60000);
         if (!res.ok) throw new Error('Erro ao gerar PDF');
         await abrirPreview(res, `Processo ${numero}`);
     } catch (err) {
@@ -244,9 +283,9 @@ async function previewTodosPDF() {
         document.getElementById('preview-title').textContent = '📄 Exportando todos os processos...';
         mostrarPreviewLoading();
         
-        const res = await fetch('/processos/todos/pdf', {
+        const res = await fetchComTimeout('/processos/todos/pdf', {
             headers: { 'Authorization': 'Bearer ' + token }
-        });
+        }, 120000);
         if (!res.ok) throw new Error('Erro ao gerar PDF');
         await abrirPreview(res, 'Todos os processos');
     } catch (err) {
@@ -272,12 +311,12 @@ async function downloadFromResponse(res, filename) {
 async function verDetalhes(id) {
     document.querySelectorAll('.secao').forEach(s => s.classList.remove('active'));
     document.getElementById('sec-detalhes').classList.add('active');
-    document.getElementById('detalhes-content').innerHTML = '<div class="loading-spinner">⚡ Buscando dados atualizados na API...</div>';
+    document.getElementById('detalhes-content').innerHTML = '<div class="loading-spinner">⏳ Buscando dados atualizados na API...<br><small style="color:#555;">Isso pode levar alguns segundos</small></div>';
 
     try {
-        const res = await fetch('/processos/' + id + '/detalhes', {
+        const res = await fetchComTimeout('/processos/' + id + '/detalhes', {
             headers: { 'Authorization': 'Bearer ' + token }
-        });
+        }, 60000);
         if (res.status === 401 || res.status === 403) { logout(); return; }
         const data = await res.json();
         if (data.error) {
@@ -401,9 +440,9 @@ function voltarProcessos() {
 
 async function baixarPDF(id, numero) {
     try {
-        const res = await fetch('/processos/' + id + '/pdf', {
+        const res = await fetchComTimeout('/processos/' + id + '/pdf', {
             headers: { 'Authorization': 'Bearer ' + token }
-        });
+        }, 60000);
         if (!res.ok) throw new Error('Erro ao gerar PDF');
         downloadFromResponse(res, 'processo_' + (numero || '').replace(/[^0-9]/g, '') + '.pdf');
     } catch (err) {
@@ -460,14 +499,17 @@ async function compartilharProcesso(id, numero) {
 async function carregarUsuarios() {
     if (user.tipo !== 'admin') return;
 
+    const tbody = document.getElementById("tbody-usuarios");
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:#888;">⏳ Carregando...</td></tr>';
+
     try {
-        const res = await fetch('/usuarios', {
+        const res = await fetchComTimeout('/usuarios', {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         const dados = await res.json();
 
-        const tbody = document.getElementById("tbody-usuarios");
-        tbody.innerHTML = "";
+        // Construir HTML em memória (evita travamento)
+        const fragment = document.createDocumentFragment();
 
         dados.forEach(u => {
             const criado = u.criado_em ? new Date(u.criado_em).toLocaleString() : '-';
@@ -481,8 +523,8 @@ async function carregarUsuarios() {
             const pgTexto = pgStatus === 'aprovado' ? '✅ Pago' : pgStatus === 'rejeitado' ? '❌ Negado' : '⏳ Pendente';
             const comprovante = u.comprovante ? `<br><small style="color:#888;">📎 ${u.comprovante.substring(0,50)}</small>` : '';
 
-            tbody.innerHTML += `
-            <tr>
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
                 <td>${u.email}</td>
                 <td><span class="badge ${u.tipo}">${u.tipo}</span></td>
                 <td>${u.modo}</td>
@@ -515,16 +557,21 @@ async function carregarUsuarios() {
                         </button>`
                     }
                 </td>
-            </tr>`;
+            `;
+            fragment.appendChild(tr);
         });
+
+        tbody.innerHTML = '';
+        tbody.appendChild(fragment);
     } catch (err) {
-        console.error("Erro ao carregar usuários:", err);
+        console.error('Erro ao carregar usuários:', err.message);
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:20px; color:#ff4444;">❌ ${err.message}</td></tr>`;
     }
 }
 
 async function carregarConfig() {
     try {
-        const res = await fetch('/auth/me', {
+        const res = await fetchComTimeout('/auth/me', {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         const dados = await res.json();
@@ -679,4 +726,5 @@ async function rejeitarPagamento(userId) {
 let intervaloProcessos;
 configurarUI();
 carregarProcessos();
-intervaloProcessos = setInterval(carregarProcessos, 30000);
+// Auto-refresh a cada 60 segundos (antes era 30s — muito agressivo)
+intervaloProcessos = setInterval(carregarProcessos, 60000);
