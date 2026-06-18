@@ -36,6 +36,9 @@ async function loop() {
         const user = usuariosCache[p.usuario_id];
         if (!user) continue;
 
+        // Pular usuários bloqueados (ativo = false)
+        if (user.ativo === false) continue;
+
         // Verifica se o usuário tem os dados necessários para notificação
         if (!user.bot_token || !user.telegram_id) continue;
 

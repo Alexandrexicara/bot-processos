@@ -13,8 +13,8 @@ function gerarToken(user) {
     );
 }
 
-// Middleware de autenticação
-function authMiddleware(req, res, next) {
+// Middleware de autenticação — valida token E verifica se usuário está ativo
+async function authMiddleware(req, res, next) {
     const token = req.headers.authorization?.split(' ')[1];
 
     if (!token) {
@@ -23,6 +23,21 @@ function authMiddleware(req, res, next) {
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
+
+        // Verificar se o usuário ainda existe e está ativo no banco
+        const result = await pool.query(
+            'SELECT ativo FROM usuarios WHERE id = $1',
+            [decoded.id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(401).json({ error: 'Usuário não encontrado' });
+        }
+
+        if (result.rows[0].ativo === false) {
+            return res.status(403).json({ error: 'Conta bloqueada. Contacte o administrador.' });
+        }
+
         req.user = decoded;
         next();
     } catch (err) {

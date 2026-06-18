@@ -824,7 +824,10 @@ function formatarResultado(dados) {
 }
 
 async function carregarBots() {
-    const res = await pool.query("SELECT * FROM usuarios WHERE bot_token IS NOT NULL AND bot_token != ''");
+    // Apenas carrega bots de usuários ATIVOS (não bloqueados)
+    const res = await pool.query(
+        "SELECT * FROM usuarios WHERE bot_token IS NOT NULL AND bot_token != '' AND ativo = true"
+    );
 
     for (let user of res.rows) {
         try {

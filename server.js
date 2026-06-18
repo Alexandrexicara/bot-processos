@@ -693,6 +693,11 @@ const botsMap = require('./botManager').bots;
 app.post('/webhook/:userId', async (req, res) => {
     const userId = parseInt(req.params.userId);
     try {
+        // Verificar se o usuário está ativo antes de processar
+        const userCheck = await pool.query('SELECT ativo FROM usuarios WHERE id=$1', [userId]);
+        if (userCheck.rows.length === 0 || userCheck.rows[0].ativo === false) {
+            return res.sendStatus(403); // Bloqueado
+        }
         const bot = Object.values(botsMap).find(b => b.userId === userId);
         if (!bot) return res.sendStatus(404);
         bot.processUpdate(req.body);
