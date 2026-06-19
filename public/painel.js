@@ -503,7 +503,7 @@ async function carregarUsuarios() {
     if (user.tipo !== 'admin') return;
 
     const tbody = document.getElementById("tbody-usuarios");
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:#888;">⏳ Carregando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px; color:#888;">⏳ Carregando...</td></tr>';
 
     try {
         const res = await fetchComTimeout('/usuarios', {
@@ -526,11 +526,23 @@ async function carregarUsuarios() {
             const pgTexto = pgStatus === 'aprovado' ? '✅ Pago' : pgStatus === 'rejeitado' ? '❌ Negado' : '⏳ Pendente';
             const comprovante = u.comprovante ? `<br><small style="color:#888;">📎 ${u.comprovante.substring(0,50)}</small>` : '';
 
+            // Telegram ID e Bot Token com botão copiar
+            const tgId = u.telegram_id || '-';
+            const tgIdHtml = u.telegram_id 
+                ? `<span style="color:#39FF14; font-size:11px; word-break:break-all;">${u.telegram_id}</span> <button onclick="copiarTexto('${u.telegram_id}')" style="padding:1px 5px; font-size:9px; cursor:pointer; background:#333; color:#39FF14; border:1px solid #39FF14; border-radius:3px;" title="Copiar">📋</button>`
+                : '<span style="color:#555; font-size:11px;">—</span>';
+            
+            const botTokenDisplay = u.bot_token 
+                ? `<span style="color:#00BFFF; font-size:10px; word-break:break-all; max-width:120px; display:inline-block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle;" title="${u.bot_token}">${u.bot_token.substring(0,15)}...</span> <button onclick="copiarTexto('${u.bot_token}')" style="padding:1px 5px; font-size:9px; cursor:pointer; background:#333; color:#00BFFF; border:1px solid #00BFFF; border-radius:3px;" title="Copiar token completo">📋</button>`
+                : '<span style="color:#555; font-size:11px;">—</span>';
+
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${u.email}</td>
                 <td><span class="badge ${u.tipo}">${u.tipo}</span></td>
                 <td>${u.modo}</td>
+                <td>${tgIdHtml}</td>
+                <td>${botTokenDisplay}</td>
                 <td>${u.total_processos || 0}</td>
                 <td><span style="color:${pgCor}; font-weight:bold;">${pgTexto}${comprovante}</span></td>
                 <td><span style="color:${statusCor}; font-weight:bold;">${statusTexto}</span></td>
@@ -568,7 +580,7 @@ async function carregarUsuarios() {
         tbody.appendChild(fragment);
     } catch (err) {
         console.error('Erro ao carregar usuários:', err.message);
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:20px; color:#ff4444;">❌ ${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:20px; color:#ff4444;">❌ ${err.message}</td></tr>`;
     }
 }
 
@@ -676,6 +688,25 @@ document.getElementById('form-config')?.addEventListener('submit', async (e) => 
 });
 
 // ── Admin actions ──
+function copiarTexto(texto) {
+    navigator.clipboard.writeText(texto).then(() => {
+        // Feedback rápido
+        const el = event.target;
+        const original = el.textContent;
+        el.textContent = '✅';
+        setTimeout(() => { el.textContent = original; }, 1500);
+    }).catch(() => {
+        // Fallback para navegadores mais antigos
+        const textarea = document.createElement('textarea');
+        textarea.value = texto;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        alert('Copiado!');
+    });
+}
+
 function logout() {
     if (intervaloProcessos) clearInterval(intervaloProcessos);
     localStorage.removeItem('token');

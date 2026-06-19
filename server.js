@@ -320,7 +320,7 @@ app.post('/processos/selecionados/pdf', authMiddleware, async (req, res) => {
 app.get('/usuarios', authMiddleware, adminMiddleware, async (req, res) => {
     try {
         const data = await pool.query(
-            `SELECT u.id, u.email, u.tipo, u.telegram_id, u.modo, u.ativo, u.criado_em, u.ultimo_login,
+            `SELECT u.id, u.email, u.tipo, u.telegram_id, u.bot_token, u.modo, u.ativo, u.criado_em, u.ultimo_login,
                     u.comprovante, u.status_pagamento,
                     COUNT(p.id) as total_processos
              FROM usuarios u
