@@ -26,7 +26,7 @@ async function authMiddleware(req, res, next) {
 
         // Verificar se o usuário ainda existe e está ativo no banco
         const result = await pool.query(
-            'SELECT ativo FROM usuarios WHERE id = $1',
+            'SELECT ativo, tipo FROM usuarios WHERE id = $1',
             [decoded.id]
         );
 
@@ -34,7 +34,8 @@ async function authMiddleware(req, res, next) {
             return res.status(401).json({ error: 'Usuário não encontrado' });
         }
 
-        if (result.rows[0].ativo === false) {
+        // Admin sempre tem acesso ao sistema (bloqueio só afeta o bot)
+        if (result.rows[0].ativo === false && result.rows[0].tipo !== 'admin') {
             return res.status(403).json({ error: 'Conta bloqueada. Contacte o administrador.' });
         }
 

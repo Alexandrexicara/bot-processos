@@ -76,8 +76,8 @@ app.post('/auth/login', async (req, res) => {
             return res.status(401).json({ error: "Email ou senha incorretos" });
         }
 
-        // Bloquear login se usuário estiver inativo
-        if (user.ativo === false) {
+        // Bloquear login se usuário estiver inativo (admin sempre pode entrar)
+        if (user.ativo === false && user.tipo !== 'admin') {
             return res.status(403).json({ error: "Conta bloqueada. Contacte o administrador." });
         }
 
