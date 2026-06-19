@@ -51,7 +51,8 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         const data = await res.json();
 
         if (data.success) {
-            if (data.user && data.user.ativo === false) {
+            // Admin sempre entra (mesmo com ativo=false); cliente bloqueado vê mensagem de pendente
+            if (data.user && data.user.ativo === false && data.user.tipo !== 'admin') {
                 erroEl.innerHTML = '⏳ Sua conta ainda <b>não foi aprovada</b>.<br>O administrador está verificando seu pagamento.<br><br>💳 Chave Pix: <b>santossilvac990@gmail.com</b><br>Titular: Celio Santos Silva';
                 return;
             }
